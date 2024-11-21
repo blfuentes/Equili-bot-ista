@@ -1,2 +1,16 @@
-# Equili-bot-ista
-Self-balancing bot with esp32 and esp-idf framework
+# Project of Self-balancing bot 'Equili-bot-ista'
+## Technologies
+- ESP32 with ESP-IDF framework
+- C++
+- Platformio
+
+### Demo
+
+### Schema
+![]()
+### Class diagram
+![]()
+
+
+Guided by:
+https://github.com/LaboratorioGluon
