@@ -11,6 +11,3 @@ CTestTestfile.cmake
 _deps
 CMakeUserPresets.json
 build
-.devcontainer
-.vscode
-build
