@@ -1,18 +1,17 @@
 #include <freertos/FreeRTOS.h>
 #include <freertos/task.h>
+#include <esp_log.h>
 
-#include <stdio.h>
-#include <stdbool.h>
-#include <unistd.h>
-
+// Logger tag for ESP-IDF logging
+static const char *TAG = "app_main";
 
 extern "C" void app_main();
 
 void app_main(void)
 {
-	while(1)
-    {   
-		printf("Hello from app_main!\n");
-        vTaskDelay(pdMS_TO_TICKS(1));
+    for (;;)
+    {
+        ESP_LOGI(TAG, "Hello from app_main!");
+        vTaskDelay(pdMS_TO_TICKS(100));
     }
 }
