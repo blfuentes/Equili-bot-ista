@@ -6,8 +6,8 @@
 
 #include <stdint.h>
 
-void bmi_initSpi(spi_bus_config_t *spiBus, spi_device_handle_t *spiHandle, spi_device_interface_config_t *spiIf, spi_transaction_t *spiTrans);
+void bmi_initSpi(spi_bus_config_t *spiBus, spi_device_handle_t *spiHandle, spi_device_interface_config_t *spiIf);
 
-uint8_t bmi_getId();
+uint8_t bmi_getId(spi_bus_config_t *spiBus, spi_device_handle_t *spiHandle, spi_device_interface_config_t *spiIf);
 
 #endif //__BMI160_H__
