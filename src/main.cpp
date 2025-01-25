@@ -46,9 +46,18 @@ void app_main(void)
     /* Set the sensor configuration */
     rslt = bmi160_set_sens_conf(&dev);
 
+    bmi160_sensor_data accel_data;
+    bmi160_sensor_data gyro_data;
+
+    float accToG = 16.0f / float((1 << 15) - 1);
+    float gyroToDps = 2000.0f / float((1 << 15) - 1);
     for (;;)
     {
-        ESP_LOGI(TAG, "Hello from app_main!");
-        vTaskDelay(pdMS_TO_TICKS(100));
+        if (bmi160_get_sensor_data(BMI160_ACCEL_SEL | BMI160_GYRO_SEL, &accel_data, &gyro_data, &dev) == BMI160_OK)
+        {
+            printf("Accl: %.2f %.2f %.2f\n", accel_data.x * accToG, accel_data.y * accToG, accel_data.z * accToG);
+            printf("Gyro: %.2f %.2f %.2f\n", gyro_data.x * gyroToDps, gyro_data.y * gyroToDps, gyro_data.z * gyroToDps);
+        }
+        vTaskDelay(pdMS_TO_TICKS(1000));
     }
 }
