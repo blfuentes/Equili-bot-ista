@@ -10,6 +10,7 @@
             "includePath": [
                 "D:/dev/Equili-bot-ista/include",
                 "D:/dev/Equili-bot-ista/src",
+                "D:/dev/Equili-bot-ista/.pio/libdeps/esp32doit-devkit-v1/BMI160_SensorAPI",
                 "C:/Users/Insan/.platformio/packages/framework-espidf/components/xtensa/esp32/include",
                 "C:/Users/Insan/.platformio/packages/framework-espidf/components/xtensa/include",
                 "C:/Users/Insan/.platformio/packages/framework-espidf/components/xtensa/deprecated_include",
@@ -171,6 +172,7 @@
                 "path": [
                     "D:/dev/Equili-bot-ista/include",
                     "D:/dev/Equili-bot-ista/src",
+                    "D:/dev/Equili-bot-ista/.pio/libdeps/esp32doit-devkit-v1/BMI160_SensorAPI",
                     "C:/Users/Insan/.platformio/packages/framework-espidf/components/xtensa/esp32/include",
                     "C:/Users/Insan/.platformio/packages/framework-espidf/components/xtensa/include",
                     "C:/Users/Insan/.platformio/packages/framework-espidf/components/xtensa/deprecated_include",
