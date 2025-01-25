@@ -115,3 +115,130 @@ void bmi_delay(uint32_t period)
 
     vTaskDelay(pdMS_TO_TICKS(period));
 };
+
+int8_t bmi_configure(bmi160_dev *dev)
+{
+    int8_t rslt;
+
+    rslt = bmi160_init(dev);
+
+    if (rslt == BMI160_OK)
+    {
+        ESP_LOGI(TAG, "BMI160 initialization success !");
+        ESP_LOGI(TAG, "Chip ID 0x%X", dev->chip_id);
+
+        /* Select the Output data rate, range of accelerometer sensor */
+        dev->accel_cfg.odr = BMI160_ACCEL_ODR_1600HZ;
+        dev->accel_cfg.range = BMI160_ACCEL_RANGE_16G;
+        dev->accel_cfg.bw = BMI160_ACCEL_BW_NORMAL_AVG4;
+
+        /* Select the power mode of accelerometer sensor */
+        dev->accel_cfg.power = BMI160_ACCEL_NORMAL_MODE;
+
+        /* Select the Output data rate, range of Gyroscope sensor */
+        dev->gyro_cfg.odr = BMI160_GYRO_ODR_3200HZ;
+        dev->gyro_cfg.range = BMI160_GYRO_RANGE_2000_DPS;
+        dev->gyro_cfg.bw = BMI160_GYRO_BW_NORMAL_MODE;
+
+        /* Select the power mode of Gyroscope sensor */
+        dev->gyro_cfg.power = BMI160_GYRO_NORMAL_MODE;
+
+        /* Set the sensor configuration */
+        return bmi160_set_sens_conf(dev);
+    }
+    else
+    {
+        ESP_LOGE(TAG,"BMI160 initialization failure !");
+        return -1;
+    }
+};
+
+int8_t bmi160_get_sensor_data_adjusted(
+    uint8_t select_sensor, struct bmi160_sensor_data_adjusted *accel_adj, struct bmi160_sensor_data_adjusted *gyro_adj, const struct bmi160_dev *dev, bool adjusted)
+{
+    // Accelerator
+    float accel_factor = 16.0f;
+    switch(dev->accel_cfg.range) 
+    {
+        case BMI160_ACCEL_RANGE_2G:
+            accel_factor = 2.0f;
+            break;
+
+        case BMI160_ACCEL_RANGE_4G:
+            accel_factor = 4.0f;
+            break;
+
+        case BMI160_ACCEL_RANGE_8G:
+            accel_factor = 8.0f;
+            break;
+
+        case BMI160_ACCEL_RANGE_16G:
+            accel_factor = 16.0f;
+            break;
+    }
+    float accToG = accel_factor / float((1 << 15) - 1);
+
+    // Gyroscope
+    float gyro_factor = 2000.0f;
+    switch (dev->gyro_cfg.range)
+    {
+        case BMI160_GYRO_RANGE_125_DPS:
+            gyro_factor = 125.0f;
+            break;
+
+        case BMI160_GYRO_RANGE_250_DPS:
+            gyro_factor = 250.0f;
+            break;
+
+        case BMI160_GYRO_RANGE_500_DPS:
+            gyro_factor = 500.0f;
+            break;
+
+        case BMI160_GYRO_RANGE_1000_DPS:
+            gyro_factor = 1000.0f;
+            break;
+        
+        case BMI160_GYRO_RANGE_2000_DPS:
+            gyro_factor = 2000.0f;
+            break;
+    }
+    float gyroToDps = gyro_factor / float((1 << 15) - 1);
+
+    // Read data
+    bmi160_sensor_data accel;
+    bmi160_sensor_data gyro;
+
+    if (bmi160_get_sensor_data(BMI160_ACCEL_SEL | BMI160_GYRO_SEL, &accel, &gyro, dev) == BMI160_OK)
+    {
+        if (adjusted) 
+        {
+            accel_adj->x = accel.x * accToG;
+            accel_adj->y = accel.y * accToG;
+            accel_adj->z = accel.z * accToG;
+            accel_adj->sensortime = accel.sensortime;
+
+            gyro_adj->x = gyro.x * gyroToDps;
+            gyro_adj->y = gyro.y * gyroToDps;
+            gyro_adj->z = gyro.z * gyroToDps;
+            gyro_adj->sensortime = gyro.sensortime;            
+        }
+        else
+        {
+            accel_adj->x = accel.x;
+            accel_adj->y = accel.y;
+            accel_adj->z = accel.z;
+            accel_adj->sensortime = accel.sensortime;
+
+            gyro_adj->x = gyro.x;
+            gyro_adj->y = gyro.y;
+            gyro_adj->z = gyro.z;
+            gyro_adj->sensortime = gyro.sensortime; 
+        }
+
+        return BMI160_OK;
+    }
+    else
+    {
+        return -1;
+    }
+};
