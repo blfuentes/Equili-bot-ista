@@ -154,7 +154,7 @@ int8_t bmi_configure(bmi160_dev *dev)
 };
 
 int8_t bmi160_get_sensor_data_adjusted(
-    uint8_t select_sensor, struct bmi160_sensor_data_adjusted *accel_adj, struct bmi160_sensor_data_adjusted *gyro_adj, const struct bmi160_dev *dev, bool adjusted)
+    uint8_t select_sensor, struct bmi160_sensor_data_wrapper *accel_wrapped, struct bmi160_sensor_data_wrapper *gyro_wrapped, const struct bmi160_dev *dev, bool adjusted)
 {
     // Accelerator
     float accel_factor = 16.0f;
@@ -210,29 +210,27 @@ int8_t bmi160_get_sensor_data_adjusted(
 
     if (bmi160_get_sensor_data(BMI160_ACCEL_SEL | BMI160_GYRO_SEL, &accel, &gyro, dev) == BMI160_OK)
     {
+        accel_wrapped->raw_data.x = accel.x;
+        accel_wrapped->raw_data.y = accel.y;
+        accel_wrapped->raw_data.z = accel.z;
+        accel_wrapped->raw_data.sensortime = accel.sensortime;
+
+        gyro_wrapped->raw_data.x = gyro.x;
+        gyro_wrapped->raw_data.y = gyro.y;
+        gyro_wrapped->raw_data.z = gyro.z;
+        gyro_wrapped->raw_data.sensortime = gyro.sensortime;
+
         if (adjusted) 
         {
-            accel_adj->x = accel.x * accToG;
-            accel_adj->y = accel.y * accToG;
-            accel_adj->z = accel.z * accToG;
-            accel_adj->sensortime = accel.sensortime;
+            accel_wrapped->adj_data.x = accel.x * accToG;
+            accel_wrapped->adj_data.y = accel.y * accToG;
+            accel_wrapped->adj_data.z = accel.z * accToG;
+            accel_wrapped->adj_data.sensortime = accel.sensortime;
 
-            gyro_adj->x = gyro.x * gyroToDps;
-            gyro_adj->y = gyro.y * gyroToDps;
-            gyro_adj->z = gyro.z * gyroToDps;
-            gyro_adj->sensortime = gyro.sensortime;            
-        }
-        else
-        {
-            accel_adj->x = accel.x;
-            accel_adj->y = accel.y;
-            accel_adj->z = accel.z;
-            accel_adj->sensortime = accel.sensortime;
-
-            gyro_adj->x = gyro.x;
-            gyro_adj->y = gyro.y;
-            gyro_adj->z = gyro.z;
-            gyro_adj->sensortime = gyro.sensortime; 
+            gyro_wrapped->adj_data.x = gyro.x * gyroToDps;
+            gyro_wrapped->adj_data.y = gyro.y * gyroToDps;
+            gyro_wrapped->adj_data.z = gyro.z * gyroToDps;
+            gyro_wrapped->adj_data.sensortime = gyro.sensortime;
         }
 
         return BMI160_OK;

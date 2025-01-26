@@ -20,15 +20,17 @@ void app_main(void)
     else
     {
 
-        bmi160_sensor_data_adjusted accel_data;
-        bmi160_sensor_data_adjusted gyro_data;
+        bmi160_sensor_data_wrapper accel_data;
+        bmi160_sensor_data_wrapper gyro_data;
 
         for (;;)
         {
             if (bmi160_get_sensor_data_adjusted(BMI160_ACCEL_SEL | BMI160_GYRO_SEL, &accel_data, &gyro_data, &dev, true) == BMI160_OK)
             {
-                printf("Accl: %.2f %.2f %.2f\n", accel_data.x, accel_data.y, accel_data.z);
-                printf("Gyro: %.2f %.2f %.2f\n", gyro_data.x, gyro_data.y, gyro_data.z);
+                printf("Raw-Accl: %6d %6d %6d\n", accel_data.raw_data.x, accel_data.raw_data.y, accel_data.raw_data.z);
+                printf("Adj-Accl: %.2f %.2f %.2f\n", accel_data.adj_data.x, accel_data.adj_data.y, accel_data.adj_data.z);
+                printf("Raw-Gyro: %6d %6d %6d\n", gyro_data.raw_data.x, gyro_data.raw_data.y, gyro_data.raw_data.z);
+                printf("Adj-Gyro: %.2f %.2f %.2f\n", gyro_data.adj_data.x, gyro_data.adj_data.y, gyro_data.adj_data.z);
             }
             vTaskDelay(pdMS_TO_TICKS(1000));
         }
