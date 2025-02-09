@@ -2,6 +2,11 @@
 #include <esp_err.h>
 #include <driver/ledc.h>
 
+ledc_mode_t speed_mode = LEDC_LOW_SPEED_MODE;
+#if SOC_LEDC_SUPPORT_HS_MODE
+    speed_mode = LEDC_HIGH_SPEED_MODE;
+#endif
+
 Servo::Servo()
 {
 
@@ -9,9 +14,10 @@ Servo::Servo()
 
 void Servo::initHw()
 {
+
     // Prepare and then apply the LEDC PWM timer configuration
     ledc_timer_config_t ledc_timer = {
-        .speed_mode       = LEDC_HIGH_SPEED_MODE,
+        .speed_mode       = speed_mode,
         .duty_resolution  = LEDC_TIMER_14_BIT,
         .timer_num        = LEDC_TIMER_0,
         .freq_hz          = 50,
@@ -22,7 +28,7 @@ void Servo::initHw()
     // Prepare and then apply the LEDC PWM channel configuration
     ledc_channel_config_t ledc_channel = {
         .gpio_num       = GPIO_NUM_15,
-        .speed_mode     = LEDC_HIGH_SPEED_MODE,
+        .speed_mode     = speed_mode,
         .channel        = LEDC_CHANNEL_0,
         .intr_type      = LEDC_INTR_DISABLE,
         .timer_sel      = LEDC_TIMER_0,
@@ -34,13 +40,14 @@ void Servo::initHw()
     uint32_t neutralDuty = (minDuty + maxDuty) / 2;
 
     ESP_ERROR_CHECK(ledc_channel_config(&ledc_channel));
-    ESP_ERROR_CHECK(ledc_set_duty(LEDC_HIGH_SPEED_MODE, LEDC_CHANNEL_0, neutralDuty));
-    ESP_ERROR_CHECK(ledc_update_duty(LEDC_HIGH_SPEED_MODE, LEDC_CHANNEL_0));
+    ESP_ERROR_CHECK(ledc_set_duty(speed_mode, LEDC_CHANNEL_0, neutralDuty));
+    ESP_ERROR_CHECK(ledc_update_duty(speed_mode, LEDC_CHANNEL_0));
 };
 
 void Servo::calibrate(uint32_t min, uint32_t max)
 {
     /**
+     * SG90 180º 5v servo
      * duty = pulse width(micros) * frequency(Hz) * resolution / 1_000_000
      *  T 0.5ms -> 0
      *  T 1ms -> 45
@@ -59,6 +66,6 @@ void Servo::setPos(uint32_t pos)
 {
     uint32_t duty = minDuty + (pos * (maxDuty - minDuty)) / 180;
 
-    ESP_ERROR_CHECK(ledc_set_duty(LEDC_HIGH_SPEED_MODE, LEDC_CHANNEL_0, duty));
-    ESP_ERROR_CHECK(ledc_update_duty(LEDC_HIGH_SPEED_MODE, LEDC_CHANNEL_0));
+    ESP_ERROR_CHECK(ledc_set_duty(speed_mode, LEDC_CHANNEL_0, duty));
+    ESP_ERROR_CHECK(ledc_update_duty(speed_mode, LEDC_CHANNEL_0));
 };
