@@ -2,9 +2,10 @@
 #include <esp_err.h>
 #include <driver/ledc.h>
 
-ledc_mode_t speed_mode = LEDC_LOW_SPEED_MODE;
 #if SOC_LEDC_SUPPORT_HS_MODE
-    speed_mode = LEDC_HIGH_SPEED_MODE;
+    ledc_mode_t speed_mode = LEDC_HIGH_SPEED_MODE;
+#else
+    ledc_mode_t speed_mode = LEDC_LOW_SPEED_MODE;
 #endif
 
 Servo::Servo()
