@@ -13,7 +13,7 @@ Servo::Servo()
 
 };
 
-void Servo::initHw()
+void Servo::initHw(gpio_num_t servo_pin)
 {
 
     // Prepare and then apply the LEDC PWM timer configuration
@@ -28,7 +28,7 @@ void Servo::initHw()
 
     // Prepare and then apply the LEDC PWM channel configuration
     ledc_channel_config_t ledc_channel = {
-        .gpio_num       = GPIO_NUM_15,
+        .gpio_num       = servo_pin,
         .speed_mode     = speed_mode,
         .channel        = LEDC_CHANNEL_0,
         .intr_type      = LEDC_INTR_DISABLE,

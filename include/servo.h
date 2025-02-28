@@ -7,7 +7,7 @@ class Servo {
 public:
     Servo();
 
-    void initHw();
+    void initHw(gpio_num_t servo_pin);
 
     void calibrate(uint32_t min, uint32_t max);
 
