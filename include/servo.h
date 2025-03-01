@@ -1,6 +1,7 @@
 #ifndef __SERVO_H__
 #define __SERVO_H__
 
+#include <driver/gpio.h>
 #include <stdint.h>
 
 class Servo {
