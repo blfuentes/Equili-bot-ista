@@ -44,6 +44,7 @@ void PinPWMDefinition::Configure()
     ledc_timer_motor.speed_mode = speed_mode;
     ledc_timer_motor.timer_num = timer;
     ledc_timer_motor.clk_cfg = LEDC_AUTO_CLK;
+    ledc_timer_motor.deconfigure = 0;
     ESP_ERROR_CHECK(ledc_timer_config(&ledc_timer_motor));
 
     ledc_channel_config_t ledc_channel_motor;
