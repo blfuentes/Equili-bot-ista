@@ -14,6 +14,7 @@ MotorDefinition::MotorDefinition(gpio_num_t in1, gpio_num_t in2, uint8_t in1_lev
     this->timer = timer;
     this->in1Level = in1_level;
     this->in2Level = in2_level;
+    this->dir = DIR_FWD;
 };
 
 void MotorDefinition::Configure()
@@ -31,11 +32,29 @@ void MotorDefinition::Configure()
 
 void MotorDefinition::Drive(int speed)
 {
+    int in1negate = 0;
+    int in2negate = 0;
+    if (this->in1Level == 0) {
+        in1negate = 1;
+    }
+    if (this->in2Level == 0) {
+        in2negate = 1;
+    }
     // printf("Driving motor\n");
-    gpio_set_level(this->in1Def.Pin(), this->in1Level);
-    gpio_set_level(this->in2Def.Pin(), this->in2Level);
+    if( speed > 0 && dir == DIR_BCK)
+    {
+        gpio_set_level(this->in1Def.Pin(), this->in1Level);
+        gpio_set_level(this->in2Def.Pin(), this->in2Level);
+        dir = DIR_FWD;
+    }
+    else if( speed < 0 && dir == DIR_FWD)
+    {
+        gpio_set_level(this->in1Def.Pin(), in1negate);
+        gpio_set_level(this->in2Def.Pin(), in2negate);
+        dir = DIR_BCK;
+    }
 
-    ledc_set_duty(this->speedMode, this->channel, speed);
+    ledc_set_duty(this->speedMode, this->channel, abs(speed));
     ledc_update_duty(this->speedMode, this->channel);
 };
 

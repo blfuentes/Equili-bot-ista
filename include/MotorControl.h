@@ -20,12 +20,19 @@ class MotorDefinition {
     ledc_timer_t timer;
     uint8_t in1Level;
     uint8_t in2Level;
+
 public:
     MotorDefinition();
     MotorDefinition(gpio_num_t in1, gpio_num_t in2, uint8_t in1_level, uint8_t in2_level, gpio_num_t pwm, ledc_channel_t channel, ledc_mode_t speed_mode, ledc_timer_t timer);
     void Configure();
     void Drive(int speed);
     void Stop();
+private:
+    typedef enum{
+        DIR_FWD = 0,
+        DIR_BCK
+    }Direction;
+    Direction dir; 
 };
 
 #endif // __MOTORCONTROL_H__
