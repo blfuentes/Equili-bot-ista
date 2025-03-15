@@ -36,7 +36,7 @@ gpio_num_t sclk_pin = GPIO_NUM_4;
 gpio_num_t cs_pin   = GPIO_NUM_17;
 
 // PID
-PidService pid(300.0, 0.0, 0.0);
+PidService pid(5.0, 0.0, 0.0);
 
 extern "C" void app_main();
 
@@ -91,7 +91,7 @@ void app_main(void)
     
             // acc.y look for the angle that it is zero when the robot is standing
             // and varies when the motor falls.
-            alpha = (alpha + gyro_data.adj_data.y*dt ) * factor + accel_data.adj_data.y*9.8f * (1-factor);
+            alpha = (alpha + gyro_data.adj_data.x*dt ) * factor + accel_data.adj_data.y*9.8f * (1-factor);
             ESP_LOGI("MAIN", "Alpha: %.2f", alpha);
     
             // Step 2: Calculat.0, 0.0, 0.0);e motors using PID
@@ -116,7 +116,7 @@ void app_main(void)
             // vTaskDelay(pdMS_TO_TICKS(200));
             // rightMotor.Stop();
             
-            vTaskDelay(pdMS_TO_TICKS(2));
+            vTaskDelay(pdMS_TO_TICKS(10));
         }
     }
 }
