@@ -1,44 +1,47 @@
 #include "PIDService.h"
 
-PidService::PidService(float pKp, float pKi, float pKd, float pInt_saturation ):
-    KP(pKp), KI(pKi), KD(pKd), int_saturation(pInt_saturation)
+PidService::PidService(float kp, float ki, float kd, float intSaturation) :
+    KP(kp), KI(ki), KD(kd), intSaturation(intSaturation)
 {
-    acum_integral = 0;
-    first_run = 1;
+    accIntegral = 0;
+    isFirstRun = true;
 }
 
-float PidService::update(float error, float dt)
-{
-
-    if(first_run)
-    {
-        prev_error = error;
-        first_run = 0;
+float PidService::update(float error, float dt) {
+    if (dt <= 0) {
+        // Handle invalid dt (e.g., return 0 or previous output)
+        return 0;
     }
 
+    if (isFirstRun) {
+        prevError = error;
+        isFirstRun = false;
+    }
+
+    // Proportional term
     float prop = error;
-    
-    acum_integral += (error + prev_error)*0.5f*dt;
 
-    if( acum_integral > int_saturation)
-    {
-        acum_integral = int_saturation;
-    }
-    else if (acum_integral < -int_saturation)
-    {
-        acum_integral = -int_saturation;
+    // Integral term (with trapezoidal integration and saturation)
+    accIntegral += (error + prevError) * 0.5f * dt;
+    if (accIntegral > intSaturation) {
+        accIntegral = intSaturation;
+    } else if (accIntegral < -intSaturation) {
+        accIntegral = -intSaturation;
     }
 
-    float derivative = (error - prev_error)/dt;
+    // Derivative term (with low-pass filter if needed)
+    float derivative = (error - prevError) / dt;
 
-    prev_error = error;
+    // Update previous error
+    prevError = error;
 
-    return KP*error + KI*acum_integral + KD*derivative;
+    // Calculate PID output
+    return KP * prop + KI * accIntegral + KD * derivative;
 }
 
 void PidService::reset(void)
 {
-    first_run = 1;
+    isFirstRun = true;
     KI = 0;
-    prev_error = 0;
+    prevError = 0;
 };
