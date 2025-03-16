@@ -33,6 +33,37 @@ void MotorDefinition::Configure()
 void MotorDefinition::Drive(int speed)
 {
     // Determine the direction based on the sign of speed
+    if (dir == DIR_FWD) {
+        if (speed < 0) {
+            // Forward direction
+            gpio_set_level(this->in1Def.Pin(), this->in1Level);
+            gpio_set_level(this->in2Def.Pin(), this->in2Level); // Opposite of in1Level
+            dir = DIR_FWD;
+        } else if (speed > 0) {
+            // Backward direction
+            gpio_set_level(this->in1Def.Pin(), !this->in1Level); // Opposite of in1Level
+            gpio_set_level(this->in2Def.Pin(), !this->in2Level);
+            dir = DIR_BCK;
+        } else {
+            // Stop the motor
+            Stop();
+        }
+    } else {
+        if (speed < 0) {
+            // Forward direction
+            gpio_set_level(this->in1Def.Pin(), !this->in1Level);
+            gpio_set_level(this->in2Def.Pin(), !this->in2Level); // Opposite of in1Level
+            dir = DIR_FWD;
+        } else if (speed > 0) {
+            // Backward direction
+            gpio_set_level(this->in1Def.Pin(), this->in1Level); // Opposite of in1Level
+            gpio_set_level(this->in2Def.Pin(), this->in2Level);
+            dir = DIR_BCK;
+        } else {
+            // Stop the motor
+            Stop();
+        }
+    }
     if (speed < 0) {
         // Forward direction
         gpio_set_level(this->in1Def.Pin(), this->in1Level);

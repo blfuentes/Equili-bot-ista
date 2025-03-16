@@ -36,7 +36,7 @@ gpio_num_t sclk_pin = GPIO_NUM_4;
 gpio_num_t cs_pin   = GPIO_NUM_17;
 
 // PID
-PidService pid(250, .00, .0);
+PidService pid(300, .00, 0);
 
 extern "C" void app_main();
 
