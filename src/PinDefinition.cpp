@@ -40,7 +40,7 @@ void PinPWMDefinition::Configure()
     // printf("Configuring pin %d\n", pin);
     ledc_timer_config_t ledc_timer_motor;
     ledc_timer_motor.duty_resolution = LEDC_TIMER_10_BIT;
-    ledc_timer_motor.freq_hz = 1000; // Set output frequency at 1 kHz
+    ledc_timer_motor.freq_hz = 20000; // Set output frequency at 1 kHz
     ledc_timer_motor.speed_mode = speed_mode;
     ledc_timer_motor.timer_num = timer;
     ledc_timer_motor.clk_cfg = LEDC_AUTO_CLK;

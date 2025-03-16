@@ -18,7 +18,7 @@ int8_t bmi_read_spi(uint8_t dev_addr, uint8_t reg_addr, uint8_t *data, uint16_t 
         ESP_LOGE(TAG, "SPI Transaction ERROR");
         return BMI160_TRANSACTION_READ_FAILURE;
     }
-    ESP_LOGI(TAG, "SPI Transaction OK");
+    // ESP_LOGI(TAG, "SPI Transaction OK");
     spi_device_release_bus(Bmi160<Bmi160SpiConfig>::spiHandle);
     
     return BMI160_OK;
@@ -40,7 +40,7 @@ int8_t bmi_write_spi(uint8_t dev_addr, uint8_t reg_addr, uint8_t *read_data, uin
         ESP_LOGE(TAG, "SPI Transaction ERROR");
         return BMI160_TRANSACTION_WRITE_FAILURE;
     }
-    ESP_LOGI(TAG, "SPI Transaction OK");
+    // ESP_LOGI(TAG, "SPI Transaction OK");
     spi_device_release_bus(Bmi160<Bmi160SpiConfig>::spiHandle);
 
     return BMI160_OK;

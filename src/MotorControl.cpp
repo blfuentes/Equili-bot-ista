@@ -32,31 +32,27 @@ void MotorDefinition::Configure()
 
 void MotorDefinition::Drive(int speed)
 {
-    int in1negate = 0;
-    int in2negate = 0;
-    if (this->in1Level == 0) {
-        in1negate = 1;
-    }
-    if (this->in2Level == 0) {
-        in2negate = 1;
-    }
-    // printf("Driving motor\n");
-    if( speed > 0 && dir == DIR_BCK)
-    {
+    // Determine the direction based on the sign of speed
+    if (speed < 0) {
+        // Forward direction
         gpio_set_level(this->in1Def.Pin(), this->in1Level);
-        gpio_set_level(this->in2Def.Pin(), this->in2Level);
+        gpio_set_level(this->in2Def.Pin(), this->in2Level); // Opposite of in1Level
         dir = DIR_FWD;
-    }
-    else if( speed < 0 && dir == DIR_FWD)
-    {
-        gpio_set_level(this->in1Def.Pin(), in1negate);
-        gpio_set_level(this->in2Def.Pin(), in2negate);
+    } else if (speed > 0) {
+        // Backward direction
+        gpio_set_level(this->in1Def.Pin(), !this->in1Level); // Opposite of in1Level
+        gpio_set_level(this->in2Def.Pin(), !this->in2Level);
         dir = DIR_BCK;
+    } else {
+        // Stop the motor
+        Stop();
     }
 
-    ledc_set_duty(this->speedMode, this->channel, abs(speed));
+    // Set the PWM duty cycle (absolute value of speed)
+    int inverted_duty = 1023 - abs(speed);
+    ledc_set_duty(this->speedMode, this->channel, abs(inverted_duty));
     ledc_update_duty(this->speedMode, this->channel);
-};
+}
 
 void MotorDefinition::Stop()
 {
