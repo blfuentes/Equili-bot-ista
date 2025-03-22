@@ -1,6 +1,7 @@
 #include <driver/gpio.h>
 #include "driver/ledc.h"
 #include "PinDefinition.h"
+#include <esp_log.h>
 
 PinGPIODefinition::PinGPIODefinition(){};
 
@@ -54,6 +55,7 @@ void PinPWMDefinition::Configure()
     ledc_channel_motor.speed_mode = speed_mode;
     ledc_channel_motor.timer_sel = timer;
     ledc_channel_motor.intr_type = LEDC_INTR_DISABLE;
+    ledc_channel_motor.flags.output_invert = 0;
     ledc_channel_motor.hpoint = 0;
     ESP_ERROR_CHECK(ledc_channel_config(&ledc_channel_motor));
 };

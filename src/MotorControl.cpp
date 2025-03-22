@@ -30,38 +30,32 @@ void MotorDefinition::Configure()
     this->pwmDef.Configure();
 };
 
-void MotorDefinition::Drive(int speed)
+void MotorDefinition::Drive(int speed, int correction)
 {
     // Determine the direction based on the sign of speed
     if (dir == DIR_FWD) {
         if (speed < 0) {
             // Forward direction
             gpio_set_level(this->in1Def.Pin(), this->in1Level);
-            gpio_set_level(this->in2Def.Pin(), this->in2Level); // Opposite of in1Level
+            gpio_set_level(this->in2Def.Pin(), this->in2Level);
             dir = DIR_FWD;
         } else if (speed > 0) {
             // Backward direction
-            gpio_set_level(this->in1Def.Pin(), !this->in1Level); // Opposite of in1Level
+            gpio_set_level(this->in1Def.Pin(), !this->in1Level);
             gpio_set_level(this->in2Def.Pin(), !this->in2Level);
             dir = DIR_BCK;
-        } else {
-            // Stop the motor
-            Stop();
         }
     } else {
         if (speed < 0) {
             // Forward direction
             gpio_set_level(this->in1Def.Pin(), !this->in1Level);
-            gpio_set_level(this->in2Def.Pin(), !this->in2Level); // Opposite of in1Level
-            dir = DIR_FWD;
+            gpio_set_level(this->in2Def.Pin(), !this->in2Level);
+            dir = DIR_BCK;
         } else if (speed > 0) {
             // Backward direction
-            gpio_set_level(this->in1Def.Pin(), this->in1Level); // Opposite of in1Level
+            gpio_set_level(this->in1Def.Pin(), this->in1Level);
             gpio_set_level(this->in2Def.Pin(), this->in2Level);
-            dir = DIR_BCK;
-        } else {
-            // Stop the motor
-            Stop();
+            dir = DIR_FWD;
         }
     }
     if (speed < 0) {
@@ -80,8 +74,7 @@ void MotorDefinition::Drive(int speed)
     }
 
     // Set the PWM duty cycle (absolute value of speed)
-    int inverted_duty = 1023 - abs(speed);
-    ledc_set_duty(this->speedMode, this->channel, abs(inverted_duty));
+    ledc_set_duty(this->speedMode, this->channel, abs(speed) + correction);
     ledc_update_duty(this->speedMode, this->channel);
 }
 

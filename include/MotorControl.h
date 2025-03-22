@@ -25,7 +25,7 @@ public:
     MotorDefinition();
     MotorDefinition(gpio_num_t in1, gpio_num_t in2, uint8_t in1_level, uint8_t in2_level, gpio_num_t pwm, ledc_channel_t channel, ledc_mode_t speed_mode, ledc_timer_t timer);
     void Configure();
-    void Drive(int speed);
+    void Drive(int speed, int correction = 0);
     void Stop();
 private:
     typedef enum{

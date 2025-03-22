@@ -36,7 +36,7 @@ gpio_num_t sclk_pin = GPIO_NUM_4;
 gpio_num_t cs_pin   = GPIO_NUM_17;
 
 // PID
-PidService pid(300, .00, 0);
+PidService pid(250, .00, 0);
 
 extern "C" void app_main();
 
@@ -125,26 +125,26 @@ void app_main(void)
             lastTime = gyro_data.adj_data.sensortime;
 
             alpha = (alpha + gyro_data.adj_data.x*dt ) * factor + accel_data.adj_data.y*9.8f * (1-factor);
-
             motorSpeed = pid.update(-alpha - offsetAlpha, dt);
-            // if (alpha > -20 && alpha < 20) {
-            //     motorSpeed = 0;
-            // }
-            if (motorSpeed > 1000) {
-                motorSpeed = 400;
+
+            if (motorSpeed > 1023) {
+                motorSpeed = 1023;
             }
-            if (motorSpeed < -1000) {
-                motorSpeed = -400;
+            if (motorSpeed < -1023) {
+                motorSpeed = -1023;
             }
-            // for(int s = 0; s < 1024; s++) {
+
+            // for(int s = 500; s > 0; ) {
             //     printf("Moving at %d speed\n", s);
             //     rightMotor.Drive(s);
             //     leftMotor.Drive(s);
-            //     vTaskDelay(pdMS_TO_TICKS(10));
+            //     s -= 10;
+            //     vTaskDelay(pdMS_TO_TICKS(200));
             // }
+
             printf("Angle: %6f - Motor speed: %6ld\n", alpha, motorSpeed);
             rightMotor.Drive(motorSpeed);
-            leftMotor.Drive(motorSpeed);
+            leftMotor.Drive(motorSpeed, 10);
             
             vTaskDelay(pdMS_TO_TICKS(20));
         }
