@@ -2,151 +2,133 @@
 #include <freertos/task.h>
 #include <driver/gpio.h>
 #include <driver/ledc.h>
+#include "driver/adc.h"
+#include "esp_adc_cal.h"
 #include <esp_log.h>
+#include <esp_err.h>
+#include <memory>
 
 #include <MotorControl.h>
 #include <bmi160_wrapper.h>
 #include <PIDService.h>
 
 // Logger tag for ESP-IDF logging
-static const char * MAIN_TAG = "app_main";
+static const char *MAIN_TAG = "app_control_main";
 
-// motor pins
-constexpr gpio_num_t MOTOR_A_IN_1 = GPIO_NUM_18;
-constexpr gpio_num_t MOTOR_A_IN_2 = GPIO_NUM_19;
-constexpr gpio_num_t MOTOR_A_PWM = GPIO_NUM_23;
+enum class ModeType : u_int8_t {
+    STANDING = 0,
+    WAR_MODE = 1
+};
 
-constexpr gpio_num_t MOTOR_B_IN_1 = GPIO_NUM_26;
-constexpr gpio_num_t MOTOR_B_IN_2 = GPIO_NUM_27;
-constexpr gpio_num_t MOTOR_B_PWM = GPIO_NUM_5;
+enum class ParamType : u_int8_t {
+    P = 0,
+    I = 1,
+    D = 2
+};
 
-constexpr gpio_num_t STBY = GPIO_NUM_33;
+// Led
+constexpr gpio_num_t LED_PIN = GPIO_NUM_4;
+PinGPIODefinition led;
 
-constexpr ledc_mode_t LEDC_SPEED_MODE = LEDC_LOW_SPEED_MODE;
+// Push buttons
+constexpr gpio_num_t MODE_PIN = GPIO_NUM_3;
+auto current_mode = std::make_unique<ModeType>(ModeType::STANDING);
+PinGPIODefinition mode;
 
-MotorDefinition rightMotor;
-MotorDefinition leftMotor;
-PinGPIODefinition stby;
+constexpr gpio_num_t PARAM_PIN = GPIO_NUM_2;
+auto current_param = std::make_unique<ParamType>(ParamType::P);
+PinGPIODefinition param;
 
-// bmi pins
-Bmi160<Bmi160SpiConfig> imu;
-gpio_num_t mosi_pin = GPIO_NUM_16;
-gpio_num_t miso_pin = GPIO_NUM_21;
-gpio_num_t sclk_pin = GPIO_NUM_4;
-gpio_num_t cs_pin   = GPIO_NUM_17;
+// Control
+constexpr gpio_num_t CONTROL_PIN = GPIO_NUM_2;
+#define POTENTIOMETER_ADC_CHANNEL   ADC1_CHANNEL_0  // GPIO1 on ESP32-C3
+#define ADC_WIDTH_BIT               ADC_WIDTH_BIT_12  // 12-bit resolution (0-4095)
+#define ADC_ATTEN_DB               ADC_ATTEN_DB_11   // Full-scale voltage ~3.3V
 
-// PID
-PidService pid(250, .00, 0);
+//
 
 extern "C" void app_main();
+
+// Mode helpers
+void next_mode(std::unique_ptr<ModeType>& p_current_mode) {
+    *p_current_mode = static_cast<ModeType>((static_cast<u_int8_t>(*p_current_mode) + 1) % 2);
+}
+constexpr std::array<const char*, 2> ModeStrings = { "Standing", "War mode" };
+
+constexpr const char* mode_to_string(ModeType p_mode) {
+    return ModeStrings.at(static_cast<size_t>(p_mode));
+}
+
+// Param helpers
+void next_param(std::unique_ptr<ParamType>& p_current_param) {
+    *p_current_param = static_cast<ParamType>((static_cast<u_int8_t>(*p_current_param) + 1) % 3);
+}
+constexpr std::array<const char*, 3> ParamStrings = { "P", "I", "D" };
+
+constexpr const char* param_to_string(ParamType p_param) {
+    return ParamStrings.at(static_cast<size_t>(p_param));
+}
 
 void app_main(void)
 {
     vTaskDelay(pdMS_TO_TICKS(1000));
 
-    // Configuring motors
-    rightMotor = MotorDefinition(MOTOR_A_IN_1, MOTOR_A_IN_2, 0, 1, MOTOR_A_PWM, LEDC_CHANNEL_0, LEDC_SPEED_MODE, LEDC_TIMER_0);
-    leftMotor = MotorDefinition(MOTOR_B_IN_1, MOTOR_B_IN_2, 1, 0, MOTOR_B_PWM, LEDC_CHANNEL_1, LEDC_SPEED_MODE, LEDC_TIMER_1);
+    // Configuring LED PIN
+    led = PinGPIODefinition(LED_PIN, GPIO_MODE_OUTPUT, GPIO_PULLDOWN_DISABLE);
+    led.Configure();
+    uint32_t led_value = 0;
+    // Configuring MODE PIN
+    mode = PinGPIODefinition(MODE_PIN, GPIO_MODE_INPUT, GPIO_PULLDOWN_DISABLE);
+    mode.Configure();
+    // Configuring PARAM PIN
+    param = PinGPIODefinition(PARAM_PIN, GPIO_MODE_INPUT, GPIO_PULLDOWN_DISABLE);
+    param.Configure();
+    // // Configuring CONTROL PIN
+    // // Configure ADC
+    // adc1_config_width(ADC_WIDTH_BIT);
+    // adc1_config_channel_atten(POTENTIOMETER_ADC_CHANNEL, ADC_ATTEN_DB);
 
-    stby = PinGPIODefinition(STBY, GPIO_MODE_OUTPUT, GPIO_PULLDOWN_DISABLE);
+    // // Characterize ADC (for better accuracy)
+    // esp_adc_cal_characteristics_t adc_chars;
+    // esp_adc_cal_characterize(ADC_UNIT_1, ADC_ATTEN_DB, ADC_WIDTH_BIT, 1100, &adc_chars);  // 1100mV default Vref
 
-    rightMotor.Configure();
-    leftMotor.Configure();
-    stby.Configure();
 
-    gpio_set_level(STBY, 1);
-
-    // Configuring bmi
-    Bmi160SpiConfig config = {
-        .spidev = SPI3_HOST,
-        .mosi = mosi_pin,
-        .miso = miso_pin,
-        .sclk = sclk_pin,
-        .cs   = cs_pin,
-        .speed= 4*1000*1000
-    };
-
-    if (imu.init(config) != BMI160_OK)
+    
+    for (;;)
     {
-        ESP_LOGE(MAIN_TAG, "Failed to initialize bmi160 device");
-    }
-    else
-    {
-        Bmi160Data accel_data, gyro_data;
-
-        // start calibration
-        printf("Starting calibration...\n");
-        float gyro_offset_x = 0.0f, gyro_offset_y = 0.0f, gyro_offset_z = 0.0f;
-
-        // collect data
-        const int num_samples = 100;
-        for (int i = 0; i < num_samples; i++)
-        {
-            imu.getData(accel_data, gyro_data);
-            gyro_offset_x += gyro_data.adj_data.x;
-            gyro_offset_y += gyro_data.adj_data.y;
-            gyro_offset_z += gyro_data.adj_data.z;
-            vTaskDelay(pdMS_TO_TICKS(10));
+        // led based on current mode
+        if (*current_mode == ModeType::STANDING) 
+            led_value = 1;
+        else {
+            led_value = !led_value;
         }
+        gpio_set_level(LED_PIN, led_value);
 
-        // normalize
-        gyro_offset_x /= num_samples;
-        gyro_offset_y /= num_samples;
-        gyro_offset_z /= num_samples;
-
-        //
-        float alpha = 0.0f; // [degree]
-        float factor = 0.995f;
-        float lastTime = 0.0f;
-        float dt;
-        int32_t motorSpeed;
-
-        printf("Finished calibration!!\n");
-        // flattern data
-        gyro_data.adj_data.x = gyro_data.adj_data.x - gyro_offset_x;
-        gyro_data.adj_data.y = gyro_data.adj_data.y - gyro_offset_y;
-        gyro_data.adj_data.z = gyro_data.adj_data.z - gyro_offset_z;
-
-        dt = (gyro_data.adj_data.sensortime - lastTime) / 1000.0f;
-        lastTime = gyro_data.adj_data.sensortime;
-
-        float offsetAlpha = (alpha + gyro_data.adj_data.x * dt) * factor + accel_data.adj_data.y * 9.8f * (1 - factor);
-        for(;;)
-        {
-            // get bmi data
-            imu.getData(accel_data, gyro_data);
-
-            // flattern data
-            gyro_data.adj_data.x = gyro_data.adj_data.x - gyro_offset_x;
-            gyro_data.adj_data.y = gyro_data.adj_data.y - gyro_offset_y;
-            gyro_data.adj_data.z = gyro_data.adj_data.z - gyro_offset_z;
-
-            dt = (gyro_data.adj_data.sensortime - lastTime)/1000.0f;
-            lastTime = gyro_data.adj_data.sensortime;
-
-            alpha = (alpha + gyro_data.adj_data.x*dt ) * factor + accel_data.adj_data.y*9.8f * (1-factor);
-            motorSpeed = pid.update(-alpha - offsetAlpha, dt);
-
-            if (motorSpeed > 1023) {
-                motorSpeed = 1023;
-            }
-            if (motorSpeed < -1023) {
-                motorSpeed = -1023;
-            }
-
-            // for(int s = 500; s > 0; ) {
-            //     printf("Moving at %d speed\n", s);
-            //     rightMotor.Drive(s);
-            //     leftMotor.Drive(s);
-            //     s -= 10;
-            //     vTaskDelay(pdMS_TO_TICKS(200));
-            // }
-
-            printf("Angle: %6f - Motor speed: %6ld\n", alpha, motorSpeed);
-            rightMotor.Drive(motorSpeed);
-            leftMotor.Drive(motorSpeed, 10);
-            
-            vTaskDelay(pdMS_TO_TICKS(20));
+        // read buttons
+        if (!gpio_get_level(MODE_PIN)) {
+            next_mode(current_mode);
         }
+        if (!gpio_get_level(PARAM_PIN)){
+            next_param(current_param);
+        }
+        ESP_LOGI(MAIN_TAG, "Current Mode: %s - Current Param: %s.", mode_to_string(*current_mode), param_to_string(*current_param));
+
+        // vTaskDelay(pdMS_TO_TICKS(100));
+        // if (param_value == 1) {
+        //     printf("Param is pressed...\n");
+        // } else {
+        //     printf("Param is released...\n");
+        // }
+
+        // // test control pin
+        // // Read raw ADC value (0-4095)
+        // int raw_value = adc1_get_raw(POTENTIOMETER_ADC_CHANNEL);
+
+        // // Convert to voltage (mV)
+        // int voltage_mV = esp_adc_cal_raw_to_voltage(raw_value, &adc_chars);
+
+        // printf("Raw ADC: %d, Voltage: %dmV\n", raw_value, voltage_mV);
+
+        vTaskDelay(pdMS_TO_TICKS(100));
     }
 }

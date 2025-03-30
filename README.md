@@ -11,6 +11,7 @@ The 'Equili-bot-ista' / 'Roborracho' / 'Robotis Yeltsin' is a self-balancing rob
 ### Main robot
 ![main-schema-robot.png](./Robot/schema/main-schema_schem.png)
 ### Control
+![main-schema-control.png](./Control/schema/main-schema_schem.png)
 
 ## Class diagram
 
