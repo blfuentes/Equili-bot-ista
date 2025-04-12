@@ -9,6 +9,7 @@
 #include <esp_err.h>
 #include <memory>
 
+#include "ControlStatus.h"
 #include "PinDefinition.h"
 
 // Logger tag for ESP-IDF logging
@@ -16,28 +17,15 @@ static const char *MAIN_TAG = "main_log";
 static const char *ADC_TAG = "adc_log";
 static const char *PARAMS_TAG = "params_log";
 
-enum class ModeType : u_int8_t {
-    STANDING = 0,
-    WAR_MODE = 1
-};
-
-enum class ParamType : u_int8_t {
-    P = 0,
-    I = 1,
-    D = 2
-};
-
 // Led
 constexpr gpio_num_t LED_PIN = GPIO_NUM_4;
 PinGPIODefinition led;
 
 // Push buttons
 constexpr gpio_num_t MODE_PIN = GPIO_NUM_3;
-auto current_mode = std::make_unique<ModeType>(ModeType::STANDING);
 PinGPIODefinition mode;
 
 constexpr gpio_num_t PARAM_PIN = GPIO_NUM_2;
-auto current_param = std::make_unique<ParamType>(ParamType::P);
 PinGPIODefinition param;
 
 // Control
@@ -46,36 +34,20 @@ constexpr gpio_num_t CONTROL_PIN = GPIO_NUM_0;
 #define ADC_WIDTH           ADC_WIDTH_BIT_12
 #define ADC_ATTEN          ADC_ATTEN_DB_12  // 0-3.1V range
 
-static int adc_raw[2][10];
-static int voltage[2][10];
 static bool example_adc_calibration_init(adc_unit_t unit, adc_channel_t channel, adc_atten_t atten, adc_cali_handle_t *out_handle);
 static void example_adc_calibration_deinit(adc_cali_handle_t handle);
 
+// Status
+ControlStatus current_status;
+
 extern "C" void app_main();
-
-// Mode helpers
-void next_mode(std::unique_ptr<ModeType>& p_current_mode) {
-    *p_current_mode = static_cast<ModeType>((static_cast<u_int8_t>(*p_current_mode) + 1) % 2);
-}
-constexpr std::array<const char*, 2> ModeStrings = { "Standing", "War mode" };
-
-constexpr const char* mode_to_string(ModeType p_mode) {
-    return ModeStrings.at(static_cast<size_t>(p_mode));
-}
-
-// Param helpers
-void next_param(std::unique_ptr<ParamType>& p_current_param) {
-    *p_current_param = static_cast<ParamType>((static_cast<u_int8_t>(*p_current_param) + 1) % 3);
-}
-constexpr std::array<const char*, 3> ParamStrings = { "P", "I", "D" };
-
-constexpr const char* param_to_string(ParamType p_param) {
-    return ParamStrings.at(static_cast<size_t>(p_param));
-}
 
 void app_main(void)
 {
     vTaskDelay(pdMS_TO_TICKS(1000));
+
+    //
+    current_status = ControlStatus(ModeType::STANDING, ParamType::P);
 
     // Configuring LED PIN
     led = PinGPIODefinition(LED_PIN, GPIO_MODE_OUTPUT, GPIO_PULLDOWN_DISABLE);
@@ -106,10 +78,17 @@ void app_main(void)
     adc_cali_handle_t adc1_cali_chan0_handle = NULL;
     bool do_calibration1_chan0 = example_adc_calibration_init(ADC_UNIT_1, POT_ADC_CHANNEL, ADC_ATTEN, &adc1_cali_chan0_handle);
     
+    int raw_value;
+    int voltage_value;
+
+    ESP_LOGI(MAIN_TAG, "Current Mode: %s - Current Param: %s.", current_status.ModeToString(), current_status.ParamToString());
+    ESP_LOGI(ADC_TAG, "ADC%d Channel[%d] Raw Data: %d", ADC_UNIT_1 + 1, POT_ADC_CHANNEL, current_status.adc_raw);
+    ESP_LOGI(ADC_TAG, "ADC%d Channel[%d] Cali Voltage: %d mV", ADC_UNIT_1 + 1, POT_ADC_CHANNEL, current_status.voltage);
+
     for (;;)
     {
         // led based on current mode
-        if (*current_mode == ModeType::STANDING) 
+        if (current_status.current_mode == ModeType::STANDING) 
             led_value = 1;
         else {
             led_value = !led_value;
@@ -118,18 +97,25 @@ void app_main(void)
 
         // read buttons
         if (!gpio_get_level(MODE_PIN)) {
-            next_mode(current_mode);
+            current_status.NextMode();
         }
         if (!gpio_get_level(PARAM_PIN)){
-            next_param(current_param);
+            current_status.NextParam();
         }
-        ESP_LOGI(MAIN_TAG, "Current Mode: %s - Current Param: %s.", mode_to_string(*current_mode), param_to_string(*current_param));
-
-        ESP_ERROR_CHECK(adc_oneshot_read(adc1_handle, POT_ADC_CHANNEL, &adc_raw[0][0]));
-        ESP_LOGI(ADC_TAG, "ADC%d Channel[%d] Raw Data: %d", ADC_UNIT_1 + 1, POT_ADC_CHANNEL, adc_raw[0][0]);
+        
+        ESP_ERROR_CHECK(adc_oneshot_read(adc1_handle, POT_ADC_CHANNEL, &raw_value));
+        current_status.SetRaw(raw_value);
+        
         if (do_calibration1_chan0) {
-            ESP_ERROR_CHECK(adc_cali_raw_to_voltage(adc1_cali_chan0_handle, adc_raw[0][0], &voltage[0][0]));
-            ESP_LOGI(ADC_TAG, "ADC%d Channel[%d] Cali Voltage: %d mV", ADC_UNIT_1 + 1, POT_ADC_CHANNEL, voltage[0][0]);
+            ESP_ERROR_CHECK(adc_cali_raw_to_voltage(adc1_cali_chan0_handle, current_status.adc_raw, &voltage_value));
+            current_status.SetVoltage(voltage_value);
+        }
+        
+        if (current_status.HasChanged())
+        {
+            ESP_LOGI(MAIN_TAG, "Current Mode: %s - Current Param: %s.", current_status.ModeToString(), current_status.ParamToString());
+            ESP_LOGI(ADC_TAG, "ADC%d Channel[%d] Raw Data: %d", ADC_UNIT_1 + 1, POT_ADC_CHANNEL, current_status.adc_raw);
+            ESP_LOGI(ADC_TAG, "ADC%d Channel[%d] Cali Voltage: %d mV", ADC_UNIT_1 + 1, POT_ADC_CHANNEL, current_status.voltage);
         }
 
         vTaskDelay(pdMS_TO_TICKS(100));
