@@ -9,13 +9,18 @@
 #include <esp_err.h>
 #include <memory>
 
+#include "ssd1306.h"
+#include "font8x8_basic.h"
+
 #include "ControlStatus.h"
 #include "PinDefinition.h"
+#include <string.h>
 
 // Logger tag for ESP-IDF logging
 static const char *MAIN_TAG = "main_log";
 static const char *ADC_TAG = "adc_log";
 static const char *PARAMS_TAG = "params_log";
+static const char *SCREEN_TAG = "SSD1306";
 
 // Led
 constexpr gpio_num_t LED_PIN = GPIO_NUM_4;
@@ -40,14 +45,95 @@ static void example_adc_calibration_deinit(adc_cali_handle_t handle);
 // Status
 ControlStatus current_status;
 
+// Screen
+SSD1306_t dev;
+int center, top, bottom;
+char display_buffer[16] = {0};  // Single reusable buffer
+
+// PID defaults
+constexpr int DEFAULT_P = 100;
+constexpr int DEFAULT_I = 10;
+constexpr int DEFAULT_D = 1;
+
+void update_display() {
+    ssd1306_clear_screen(&dev, false);
+
+    // Line 0: Mode - Param
+    memset(display_buffer, 0, sizeof(display_buffer));
+    snprintf(display_buffer, sizeof(display_buffer), "%s - %s", 
+             current_status.ModeToString(), current_status.ParamToString());
+    ssd1306_display_text(&dev, 0, display_buffer, 16, false);
+
+    // // Line 1: Raw ADC
+    // memset(display_buffer, 0, sizeof(display_buffer));
+    // snprintf(display_buffer, sizeof(display_buffer), "Raw: %d", current_status.adc_raw);
+    // ssd1306_display_text(&dev, 1, display_buffer, 16, false);
+
+    // // Line 2: Voltage
+    // memset(display_buffer, 0, sizeof(display_buffer));
+    // snprintf(display_buffer, sizeof(display_buffer), "Voltage: %d", current_status.voltage);
+    // ssd1306_display_text(&dev, 2, display_buffer, 16, false);
+
+    // // Line 3: PID Values
+    // memset(display_buffer, 0, sizeof(display_buffer));
+    // snprintf(display_buffer, sizeof(display_buffer), "P:%d I:%d D:%d", 100, 10, 1);
+    // ssd1306_display_text(&dev, 3, display_buffer, 16, false);
+
+    // Line 1: PID Values
+    memset(display_buffer, 0, sizeof(display_buffer));
+    snprintf(display_buffer, sizeof(display_buffer), "P: %d", current_status.current_P);
+    ssd1306_display_text(&dev, 1, display_buffer, 16, false);
+
+    // Line 2: PID Values
+    memset(display_buffer, 0, sizeof(display_buffer));
+    snprintf(display_buffer, sizeof(display_buffer), "I: %d", current_status.current_I);
+    ssd1306_display_text(&dev, 2, display_buffer, 16, false);
+
+    // Line 3: PID Values
+    memset(display_buffer, 0, sizeof(display_buffer));
+    snprintf(display_buffer, sizeof(display_buffer), "D: %.1f", current_status.current_D);
+    ssd1306_display_text(&dev, 3, display_buffer, 16, false);
+}
+
+void update_pid(int orientation)
+{
+    switch(current_status.current_param)
+    {
+        case ParamType::P:
+            current_status.current_P += orientation == 1 ? 10 : -10;
+            break;
+        case ParamType::I:
+            current_status.current_I += orientation == 1 ? 1 : -1;
+            break;
+        case ParamType::D:
+            current_status.current_D += orientation == 1 ? .1 : -.1;
+            break;
+    }
+}
+
 extern "C" void app_main();
 
 void app_main(void)
 {
     vTaskDelay(pdMS_TO_TICKS(1000));
 
+    // OLED
+    ESP_LOGI(SCREEN_TAG, "INTERFACE is i2c");
+    ESP_LOGI(SCREEN_TAG, "CONFIG_SDA_GPIO=%d",CONFIG_SDA_GPIO);
+    ESP_LOGI(SCREEN_TAG, "CONFIG_SCL_GPIO=%d",CONFIG_SCL_GPIO);
+    ESP_LOGI(SCREEN_TAG, "CONFIG_RESET_GPIO=%d",CONFIG_RESET_GPIO);
+    i2c_master_init(&dev, CONFIG_SDA_GPIO, CONFIG_SCL_GPIO, CONFIG_RESET_GPIO);
+
+    ESP_LOGI(SCREEN_TAG, "Panel is 128x32");
+    ssd1306_init(&dev, 128, 32);
+    ssd1306_clear_screen(&dev, false);
+
+    ssd1306_contrast(&dev, 0xff);
+
+    ssd1306_display_text(&dev, 0, "STARTING", 9, false);
+
     //
-    current_status = ControlStatus(ModeType::STANDING, ParamType::P);
+    current_status = ControlStatus(DEFAULT_P, DEFAULT_I, DEFAULT_D, ModeType::STANDING, ParamType::P);
 
     // Configuring LED PIN
     led = PinGPIODefinition(LED_PIN, GPIO_MODE_OUTPUT, GPIO_PULLDOWN_DISABLE);
@@ -78,12 +164,15 @@ void app_main(void)
     adc_cali_handle_t adc1_cali_chan0_handle = NULL;
     bool do_calibration1_chan0 = example_adc_calibration_init(ADC_UNIT_1, POT_ADC_CHANNEL, ADC_ATTEN, &adc1_cali_chan0_handle);
     
+    int pid_orientation = 0;
     int raw_value;
     int voltage_value;
 
     ESP_LOGI(MAIN_TAG, "Current Mode: %s - Current Param: %s.", current_status.ModeToString(), current_status.ParamToString());
     ESP_LOGI(ADC_TAG, "ADC%d Channel[%d] Raw Data: %d", ADC_UNIT_1 + 1, POT_ADC_CHANNEL, current_status.adc_raw);
     ESP_LOGI(ADC_TAG, "ADC%d Channel[%d] Cali Voltage: %d mV", ADC_UNIT_1 + 1, POT_ADC_CHANNEL, current_status.voltage);
+
+    update_display();
 
     for (;;)
     {
@@ -111,11 +200,19 @@ void app_main(void)
             current_status.SetVoltage(voltage_value);
         }
         
+        pid_orientation = current_status.ControlChanged();
+        if (pid_orientation != 0)
+        {
+            update_pid(pid_orientation);
+        }
+
         if (current_status.HasChanged())
         {
             ESP_LOGI(MAIN_TAG, "Current Mode: %s - Current Param: %s.", current_status.ModeToString(), current_status.ParamToString());
             ESP_LOGI(ADC_TAG, "ADC%d Channel[%d] Raw Data: %d", ADC_UNIT_1 + 1, POT_ADC_CHANNEL, current_status.adc_raw);
             ESP_LOGI(ADC_TAG, "ADC%d Channel[%d] Cali Voltage: %d mV", ADC_UNIT_1 + 1, POT_ADC_CHANNEL, current_status.voltage);
+
+            update_display();
         }
 
         vTaskDelay(pdMS_TO_TICKS(100));

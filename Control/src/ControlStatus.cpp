@@ -1,17 +1,33 @@
 #include "ControlStatus.h"
 
-constexpr std::array<const char*, 2> ModeStrings = { "Standing", "War mode" };
+constexpr std::array<const char*, 2> ModeStrings = { "Standing", "Fight" };
 constexpr std::array<const char*, 3> ParamStrings = { "P", "I", "D" };
 
 ControlStatus::ControlStatus(){};
 
-ControlStatus::ControlStatus(ModeType mode, ParamType param)
-    :   current_mode(mode),
+ControlStatus::ControlStatus(int p, int i, float d, ModeType mode, ParamType param)
+    :   current_P(p),
+        current_I(i),
+        current_D(d),
+        current_mode(mode),
         current_param(param),
         adc_raw{0},
         voltage{0}
 {
 };
+
+int ControlStatus::ControlChanged()
+{
+    if(abs(voltage - prev_voltage) > 10)
+    {
+        if(voltage > prev_voltage)
+            return 1;
+        if(voltage < prev_voltage)
+            return -1;
+    }
+
+    return 0;
+}
 
 bool ControlStatus::HasChanged()
 {
@@ -26,9 +42,7 @@ bool ControlStatus::HasChanged()
         return true;
     }
 
-    if (
-        // (abs(adc_raw - prev_raw) > 10) ||
-        (abs(voltage - prev_voltage) > 10))
+    if (this->ControlChanged() != 0)
     {
         prev_raw = adc_raw;
         prev_voltage = voltage;

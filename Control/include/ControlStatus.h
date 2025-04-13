@@ -22,6 +22,9 @@ class ControlStatus {
         int prev_raw;
         int prev_voltage;
     public:
+        int current_P;
+        int current_I;
+        float current_D;
         ModeType current_mode;
         ParamType current_param;
         int adc_raw;
@@ -30,8 +33,9 @@ class ControlStatus {
         // std::array<std::array<int, 10>, 2> voltage{};
 
         ControlStatus();
-        ControlStatus(ModeType mode, ParamType param);
+        ControlStatus(int p, int i, float d, ModeType mode, ParamType param);
 
+        int ControlChanged();
         bool HasChanged();
         void NextMode();
         const char* ModeToString();
