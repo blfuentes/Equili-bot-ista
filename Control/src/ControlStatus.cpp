@@ -18,7 +18,7 @@ ControlStatus::ControlStatus(int p, int i, float d, ModeType mode, ParamType par
 
 int ControlStatus::ControlChanged()
 {
-    if(abs(voltage - prev_voltage) > 10)
+    if(abs(voltage - prev_voltage) > 15)
     {
         if(voltage > prev_voltage)
             return 1;
