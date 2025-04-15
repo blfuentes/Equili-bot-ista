@@ -12,9 +12,19 @@ ControlStatus::ControlStatus(int p, int i, float d, ModeType mode, ParamType par
         current_mode(mode),
         current_param(param),
         adc_raw{0},
-        voltage{0}
+        voltage{0},
+        default_X(0),
+        current_X(0),
+        default_Y(0),
+        current_Y(0)
 {
 };
+
+bool ControlStatus::MovementChanged()
+{
+    return this->current_X != 0 || this->current_Y != 0;
+    // return (abs(current_X - default_X) > 50 || abs(current_Y - default_Y) > 50);
+}
 
 int ControlStatus::ControlChanged()
 {
@@ -49,7 +59,7 @@ bool ControlStatus::HasChanged()
         return true;
     }
 
-    return false;
+    return this->MovementChanged();
 };
 
 // Mode
@@ -91,3 +101,25 @@ void ControlStatus::SetVoltage(int value)
     prev_voltage = this->voltage;
     this->voltage = value;
 };
+
+// Movement
+void ControlStatus::UpdateMovement(int x, int y)
+{
+    
+    if (abs(x - this->default_X) > 50)
+    {
+        this->current_X = x - this->default_X;
+    }
+    else
+    {
+        this->current_X = 0;
+    }
+    if (abs(y - this->default_Y) > 50)
+    {
+        this->current_Y = y - this->default_Y;
+    }
+    else
+    {
+        this->current_Y = 0;
+    }
+}

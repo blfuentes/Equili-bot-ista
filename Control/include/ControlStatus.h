@@ -29,8 +29,11 @@ class ControlStatus {
         ParamType current_param;
         int adc_raw;
         int voltage;
-        // std::array<std::array<int, 10>, 2> adc_raw{};
-        // std::array<std::array<int, 10>, 2> voltage{};
+
+        int default_X;
+        int current_X;
+        int default_Y;
+        int current_Y;
 
         ControlStatus();
         ControlStatus(int p, int i, float d, ModeType mode, ParamType param);
@@ -43,6 +46,8 @@ class ControlStatus {
         const char* ParamToString();
         void SetRaw(int value);
         void SetVoltage(int value);
+        bool MovementChanged();
+        void UpdateMovement(int x, int y);
 };
 
 
