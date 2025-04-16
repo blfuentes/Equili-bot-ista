@@ -90,24 +90,6 @@ void update_display() {
 
     // Line 3: Joystick Values
     update_movement_display();
-    // memset(display_buffer, 0, sizeof(display_buffer));
-    // snprintf(display_buffer, sizeof(display_buffer), "X:%d Y:%d", current_status.current_X, current_status.current_Y);
-    // ssd1306_display_text(&dev, 3, display_buffer, 16, false);
-
-    // // Line 1: PID Values
-    // memset(display_buffer, 0, sizeof(display_buffer));
-    // snprintf(display_buffer, sizeof(display_buffer), "P: %d", current_status.current_P);
-    // ssd1306_display_text(&dev, 1, display_buffer, 16, false);
-
-    // // Line 2: PID Values
-    // memset(display_buffer, 0, sizeof(display_buffer));
-    // snprintf(display_buffer, sizeof(display_buffer), "I: %d", current_status.current_I);
-    // ssd1306_display_text(&dev, 2, display_buffer, 16, false);
-
-    // // Line 3: PID Values
-    // memset(display_buffer, 0, sizeof(display_buffer));
-    // snprintf(display_buffer, sizeof(display_buffer), "D: %.1f", current_status.current_D);
-    // ssd1306_display_text(&dev, 3, display_buffer, 16, false);
 }
 
 void update_pid(int orientation)
@@ -160,22 +142,19 @@ void app_main(void)
     // Configuring PARAM PIN
     param = PinGPIODefinition(PARAM_PIN, GPIO_MODE_INPUT, GPIO_PULLDOWN_DISABLE);
     param.Configure();
-    // Configure ADC
-    //-------------ADC1 Init---------------//
+    // Configure base ADC
     adc_oneshot_unit_handle_t adc1_handle;
     adc_oneshot_unit_init_cfg_t init_config1 = {
         .unit_id = ADC_UNIT_1,
     };
     ESP_ERROR_CHECK(adc_oneshot_new_unit(&init_config1, &adc1_handle));
 
-    //-------------ADC1 Config---------------//
-    adc_oneshot_chan_cfg_t config = {
+    // Configure POT ADC
+    adc_oneshot_chan_cfg_t pot_config = {
         .atten = ADC_ATTEN,
         .bitwidth = ADC_BITWIDTH_DEFAULT,
     };
-    ESP_ERROR_CHECK(adc_oneshot_config_channel(adc1_handle, POT_ADC_CHANNEL, &config));
-
-    //-------------ADC1 Calibration Init---------------//
+    ESP_ERROR_CHECK(adc_oneshot_config_channel(adc1_handle, POT_ADC_CHANNEL, &pot_config));
     adc_cali_handle_t adc1_cali_control_handle = NULL;
     bool do_calibration1_control = example_adc_calibration_init(ADC_UNIT_1, POT_ADC_CHANNEL, ADC_ATTEN, &adc1_cali_control_handle);
     
@@ -183,14 +162,19 @@ void app_main(void)
     int raw_value;
     int voltage_value;
 
-    ESP_LOGI(MAIN_TAG, "Current Mode: %s - Current Param: %s.", current_status.ModeToString(), current_status.ParamToString());
-    ESP_LOGI(ADC_TAG, "ADC%d Channel[%d] Raw Data: %d", ADC_UNIT_1 + 1, POT_ADC_CHANNEL, current_status.adc_raw);
-    ESP_LOGI(ADC_TAG, "ADC%d Channel[%d] Cali Voltage: %d mV", ADC_UNIT_1 + 1, POT_ADC_CHANNEL, current_status.voltage);
+    // calculate median value for control
+    int median_value = 0;
+    for (int i = 0; i < 50; i++) {
+        ESP_ERROR_CHECK(adc_oneshot_read(adc1_handle, POT_ADC_CHANNEL, &raw_value));
+        median_value += raw_value;
+    }
+    median_value /= 50;
+    ESP_LOGI(ADC_TAG, "Median Value: %d", median_value);
+    current_status.SetRaw(median_value);
 
     update_display();
 
     // Configure Joystick ADC
-
     int raw_value_joystick_x, raw_value_joystick_y;
     int voltage_value_joystick_x, voltage_value_joystick_y;
 
@@ -271,16 +255,6 @@ void app_main(void)
         }
 
         // Read joystick values
-        // if (gpio_get_level(JOYSTICK_BUTTON))
-        // {
-        //     ESP_LOGI(JOYSTICK_TAG, "Joystick Button Pressed!");
-        //     // Perform action when joystick button is pressed
-        // }
-        // else
-        // {
-        //     ESP_LOGI(JOYSTICK_TAG, "Joystick Button Released!");
-        //     // Perform action when joystick button is released
-        // }
         ESP_ERROR_CHECK(adc_oneshot_read(adc1_handle, JOYSTICK_X, &raw_value_joystick_x));
         ESP_ERROR_CHECK(adc_oneshot_read(adc1_handle, JOYSTICK_Y, &raw_value_joystick_y));
         if(do_calibration1_joy_x) {
@@ -289,7 +263,6 @@ void app_main(void)
         if(do_calibration1_joy_y) {
             ESP_ERROR_CHECK(adc_cali_raw_to_voltage(adc1_cali_joy_y_handle, raw_value_joystick_y, &voltage_value_joystick_y));
         }
-        // ESP_LOGI(JOYSTICK_TAG, "X:%d Y:%d", raw_value_joystick_x, raw_value_joystick_y);
         current_status.UpdateMovement(raw_value_joystick_x, raw_value_joystick_y);
         
         if (current_status.HasChanged())

@@ -28,7 +28,7 @@ bool ControlStatus::MovementChanged()
 
 int ControlStatus::ControlChanged()
 {
-    if(abs(voltage - prev_voltage) > 15)
+    if(abs(voltage - prev_voltage) > 20)
     {
         if(voltage > prev_voltage)
             return 1;
