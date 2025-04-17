@@ -1,6 +1,7 @@
 #include <sys/types.h>
 #include <array>
 #include <stdexcept>
+
 #ifndef __CONTROLSTATUS_H__
 #define __CONTROLSTATUS_H__
 
@@ -15,10 +16,16 @@ enum class ParamType : u_int8_t {
     D = 2
 };
 
+enum class LockType : u_int8_t {
+    LOCKED = 0,
+    UNLOCKED = 1
+};
+
 class ControlStatus {
     private:
         ModeType prev_mode;
         ParamType prev_param;
+        LockType prev_lock;
         int prev_raw;
         int prev_voltage;
     public:
@@ -27,6 +34,7 @@ class ControlStatus {
         float current_D;
         ModeType current_mode;
         ParamType current_param;
+        LockType current_lock;
         int adc_raw;
         int voltage;
 
@@ -36,7 +44,7 @@ class ControlStatus {
         int current_Y;
 
         ControlStatus();
-        ControlStatus(int p, int i, float d, ModeType mode, ParamType param);
+        ControlStatus(int p, int i, float d, ModeType mode, ParamType param, LockType lock);
 
         int ControlChanged();
         bool HasChanged();
@@ -44,6 +52,8 @@ class ControlStatus {
         const char* ModeToString();
         void NextParam();
         const char* ParamToString();
+        void NextLock();
+        const char* LockToString();
         void SetRaw(int value);
         void SetVoltage(int value);
         bool MovementChanged();

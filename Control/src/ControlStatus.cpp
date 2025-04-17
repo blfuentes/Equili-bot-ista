@@ -1,16 +1,21 @@
 #include "ControlStatus.h"
 
-constexpr std::array<const char*, 2> ModeStrings = { "Standing", "Fight" };
+constexpr std::array<const char*, 2> ModeStrings = { "Footing", "Fight" };
 constexpr std::array<const char*, 3> ParamStrings = { "P", "I", "D" };
+constexpr std::array<const char*, 2> LockStrings = { "Locked", "Unlocked" };
+
+constexpr int JoystickMovementThreshold = 30;
+constexpr int VoltageChangeThreshold = 30;
 
 ControlStatus::ControlStatus(){};
 
-ControlStatus::ControlStatus(int p, int i, float d, ModeType mode, ParamType param)
+ControlStatus::ControlStatus(int p, int i, float d, ModeType mode, ParamType param, LockType lock)
     :   current_P(p),
         current_I(i),
         current_D(d),
         current_mode(mode),
         current_param(param),
+        current_lock(lock),
         adc_raw{0},
         voltage{0},
         default_X(0),
@@ -23,12 +28,11 @@ ControlStatus::ControlStatus(int p, int i, float d, ModeType mode, ParamType par
 bool ControlStatus::MovementChanged()
 {
     return this->current_X != 0 || this->current_Y != 0;
-    // return (abs(current_X - default_X) > 50 || abs(current_Y - default_Y) > 50);
 }
 
 int ControlStatus::ControlChanged()
 {
-    if(abs(voltage - prev_voltage) > 20)
+    if(abs(voltage - prev_voltage) > VoltageChangeThreshold)
     {
         if(voltage > prev_voltage)
             return 1;
@@ -52,6 +56,12 @@ bool ControlStatus::HasChanged()
         return true;
     }
 
+    if (current_lock != prev_lock)
+    {
+        prev_lock = current_lock;
+        return true;
+    }
+
     if (this->ControlChanged() != 0)
     {
         prev_raw = adc_raw;
@@ -67,7 +77,6 @@ void ControlStatus::NextMode()
 {
     prev_mode = static_cast<ModeType>((static_cast<u_int8_t>(this->current_mode)));
     this->current_mode = static_cast<ModeType>((static_cast<u_int8_t>(this->current_mode) + 1) % 2);
-    // printf("Mode changed from %u to %u\n", static_cast<u_int8_t>(prev_mode), static_cast<u_int8_t>(this->current_mode));
 };
 
 const char* ControlStatus::ModeToString()
@@ -80,12 +89,23 @@ void ControlStatus::NextParam()
 {
     prev_param = static_cast<ParamType>((static_cast<u_int8_t>(this->current_param)));
     this->current_param = static_cast<ParamType>((static_cast<u_int8_t>(this->current_param) + 1) % 3);
-    // printf("Param changed from %u to %u\n", static_cast<u_int8_t>(prev_param), static_cast<u_int8_t>(this->current_param));
 };
 
 const char* ControlStatus::ParamToString()
 {
     return ParamStrings.at(static_cast<size_t>(this->current_param));
+};
+
+// Lock
+void ControlStatus::NextLock()
+{
+    prev_lock = static_cast<LockType>((static_cast<u_int8_t>(this->current_lock)));
+    this->current_lock = static_cast<LockType>((static_cast<u_int8_t>(this->current_lock) + 1) % 2);
+};
+
+const char* ControlStatus::LockToString()
+{
+    return LockStrings.at(static_cast<size_t>(this->current_lock));
 };
 
 // Raw
@@ -106,7 +126,7 @@ void ControlStatus::SetVoltage(int value)
 void ControlStatus::UpdateMovement(int x, int y)
 {
     
-    if (abs(x - this->default_X) > 50)
+    if (abs(x - this->default_X) > JoystickMovementThreshold)
     {
         this->current_X = x - this->default_X;
     }
@@ -114,7 +134,7 @@ void ControlStatus::UpdateMovement(int x, int y)
     {
         this->current_X = 0;
     }
-    if (abs(y - this->default_Y) > 50)
+    if (abs(y - this->default_Y) > JoystickMovementThreshold)
     {
         this->current_Y = y - this->default_Y;
     }

@@ -18,27 +18,29 @@
 
 // Logger tag for ESP-IDF logging
 static const char *MAIN_TAG = "main_log";
+static const char *MODE_TAG = "mode_log";
 static const char *ADC_TAG = "adc_log";
-static const char *PARAMS_TAG = "params_log";
-static const char *SCREEN_TAG = "SSD1306";
-static const char *JOYSTICK_TAG = "JOYSTICK";
+static const char *BLOCK_TAG = "block_log";
+static const char *SCREEN_TAG = "ssd1306_log";
+static const char *JOYSTICK_TAG = "joystick_log";
+static const char *REPORT_TAG = "report_log";
 
 // Led
 constexpr gpio_num_t LED_PIN = GPIO_NUM_4;
 PinGPIODefinition led;
+uint32_t led_value = 0;
 
 // Push buttons
-constexpr gpio_num_t MODE_PIN = GPIO_NUM_9;
+constexpr gpio_num_t MODE_PIN = GPIO_NUM_2;
 PinGPIODefinition mode;
 
-constexpr gpio_num_t PARAM_PIN = GPIO_NUM_8;
-PinGPIODefinition param;
+constexpr gpio_num_t BLOCK_PIN = GPIO_NUM_8;
+PinGPIODefinition block;
 
 // Control
 constexpr gpio_num_t CONTROL_PIN = GPIO_NUM_3;
-#define POT_ADC_CHANNEL     ADC_CHANNEL_3  // GPIO36 if using ESP32-WROOM
-#define ADC_WIDTH           ADC_WIDTH_BIT_12
-#define ADC_ATTEN          ADC_ATTEN_DB_12  // 0-3.1V range
+constexpr adc_channel_t POT_ADC_CHANNEL = ADC_CHANNEL_3; // GPIO03
+constexpr adc_atten_t ADC_ATTEN = ADC_ATTEN_DB_12; // 0-3.1V range
 
 static bool example_adc_calibration_init(adc_unit_t unit, adc_channel_t channel, adc_atten_t atten, adc_cali_handle_t *out_handle);
 static void example_adc_calibration_deinit(adc_cali_handle_t handle);
@@ -47,8 +49,9 @@ static void example_adc_calibration_deinit(adc_cali_handle_t handle);
 ControlStatus current_status;
 
 // Screen
-SSD1306_t dev;
+SSD1306_t oled_dev;
 int center, top, bottom;
+char lock_display = {0}; // Single reusable buffer
 char display_buffer[16] = {0};  // Single reusable buffer
 
 // PID defaults
@@ -57,36 +60,38 @@ constexpr int DEFAULT_I = 10;
 constexpr int DEFAULT_D = 1;
 
 // JOYSTICK
-#define JOYSTICK_X ADC_CHANNEL_0 // GPIO00
-#define JOYSTICK_Y ADC_CHANNEL_1 // GPIO01
-#define JOYSTICK_BUTTON GPIO_NUM_2
+constexpr adc_channel_t JOYSTICK_X = ADC_CHANNEL_0; // GPIO00
+constexpr adc_channel_t JOYSTICK_Y = ADC_CHANNEL_1; // GPIO01
+constexpr gpio_num_t JOYSTICK_BUTTON_PIN = GPIO_NUM_9;
+PinGPIODefinition param;
 
 void update_movement_display()
 {
     // Line 3: Joystick Values
     memset(display_buffer, 0, sizeof(display_buffer));
     snprintf(display_buffer, sizeof(display_buffer), "X:%5d Y:%5d", current_status.current_X, current_status.current_Y);
-    ssd1306_display_text(&dev, 3, display_buffer, 16, false);
+    ssd1306_display_text(&oled_dev, 3, display_buffer, 16, false);
 }
 
 void update_display() {
-    ssd1306_clear_screen(&dev, false);
+    ssd1306_clear_screen(&oled_dev, false);
 
     // Line 0: Mode - Param
     memset(display_buffer, 0, sizeof(display_buffer));
-    snprintf(display_buffer, sizeof(display_buffer), "%s - %s", 
-             current_status.ModeToString(), current_status.ParamToString());
-    ssd1306_display_text(&dev, 0, display_buffer, 16, false);
+    lock_display = current_status.current_lock == LockType::LOCKED ? 'L' : 'U';//static_cast<char>(0x1F512) : static_cast<char>(0x1F513);
+    snprintf(display_buffer, sizeof(display_buffer), "%s - %s (%c)", 
+             current_status.ModeToString(), current_status.ParamToString(), lock_display);
+    ssd1306_display_text(&oled_dev, 0, display_buffer, 16, false);
 
    // Line 2: PID Headers
    memset(display_buffer, 0, sizeof(display_buffer));
    snprintf(display_buffer, sizeof(display_buffer), "%3s %3s %4s", "P", "I", "D");
-   ssd1306_display_text(&dev, 1, display_buffer, 16, false);
+   ssd1306_display_text(&oled_dev, 1, display_buffer, 16, false);
 
     // Line 2: PID Values
     memset(display_buffer, 0, sizeof(display_buffer));
     snprintf(display_buffer, sizeof(display_buffer), "%3d %3d %4.1f", current_status.current_P, current_status.current_I, current_status.current_D);
-    ssd1306_display_text(&dev, 2, display_buffer, 16, false);
+    ssd1306_display_text(&oled_dev, 2, display_buffer, 16, false);
 
     // Line 3: Joystick Values
     update_movement_display();
@@ -98,12 +103,15 @@ void update_pid(int orientation)
     {
         case ParamType::P:
             current_status.current_P += orientation == 1 ? 10 : -10;
+            if (current_status.current_P < 0) current_status.current_P = 0;
             break;
         case ParamType::I:
             current_status.current_I += orientation == 1 ? 1 : -1;
+            if (current_status.current_I < 0) current_status.current_I = 0;
             break;
         case ParamType::D:
             current_status.current_D += orientation == 1 ? .1 : -.1;
+            if (current_status.current_D < 0) current_status.current_D = 0;
             break;
     }
 }
@@ -112,37 +120,47 @@ extern "C" void app_main();
 
 void app_main(void)
 {
-    vTaskDelay(pdMS_TO_TICKS(1000));
+    vTaskDelay(pdMS_TO_TICKS(300));
+    ESP_LOGI(MAIN_TAG, "Starting application...");
 
     // OLED
+    ESP_LOGI(SCREEN_TAG, "Initializing SSD1306 OLED display...");
     ESP_LOGI(SCREEN_TAG, "INTERFACE is i2c");
     ESP_LOGI(SCREEN_TAG, "CONFIG_SDA_GPIO=%d",CONFIG_SDA_GPIO);
     ESP_LOGI(SCREEN_TAG, "CONFIG_SCL_GPIO=%d",CONFIG_SCL_GPIO);
     ESP_LOGI(SCREEN_TAG, "CONFIG_RESET_GPIO=%d",CONFIG_RESET_GPIO);
-    i2c_master_init(&dev, CONFIG_SDA_GPIO, CONFIG_SCL_GPIO, CONFIG_RESET_GPIO);
-
     ESP_LOGI(SCREEN_TAG, "Panel is 128x32");
-    ssd1306_init(&dev, 128, 32);
-    ssd1306_clear_screen(&dev, false);
 
-    ssd1306_contrast(&dev, 0xff);
+    i2c_master_init(&oled_dev, CONFIG_SDA_GPIO, CONFIG_SCL_GPIO, CONFIG_RESET_GPIO);
 
-    ssd1306_display_text(&dev, 0, "STARTING", 9, false);
+    ssd1306_init(&oled_dev, 128, 32);
+    ssd1306_clear_screen(&oled_dev, false);
+    ssd1306_contrast(&oled_dev, 0xff);
+    ssd1306_display_text(&oled_dev, 0, "STARTING...", 9, false);
 
-    //
-    current_status = ControlStatus(DEFAULT_P, DEFAULT_I, DEFAULT_D, ModeType::STANDING, ParamType::P);
+    ESP_LOGI(SCREEN_TAG, "SSD1306 initialized");
 
+    // GPIOs
+    ESP_LOGI(MAIN_TAG, "Configuring GPIOs...");
     // Configuring LED PIN
     led = PinGPIODefinition(LED_PIN, GPIO_MODE_OUTPUT, GPIO_PULLDOWN_DISABLE);
     led.Configure();
-    uint32_t led_value = 0;
+    ESP_LOGI(MODE_TAG, "Led configured on GPIO %d", LED_PIN);
+
     // Configuring MODE PIN
     mode = PinGPIODefinition(MODE_PIN, GPIO_MODE_INPUT, GPIO_PULLDOWN_DISABLE);
     mode.Configure();
-    // Configuring PARAM PIN
-    param = PinGPIODefinition(PARAM_PIN, GPIO_MODE_INPUT, GPIO_PULLDOWN_DISABLE);
-    param.Configure();
+    ESP_LOGI(MODE_TAG, "Mode configured on GPIO %d", MODE_PIN);
+
+    // Configuring LOCK PIN
+    block = PinGPIODefinition(BLOCK_PIN, GPIO_MODE_INPUT, GPIO_PULLDOWN_DISABLE);
+    block.Configure();
+    ESP_LOGI(BLOCK_TAG, "Block configured on GPIO %d", BLOCK_PIN);
+
+    ESP_LOGI(MAIN_TAG, "GPIOs configured");
+
     // Configure base ADC
+    ESP_LOGI(ADC_TAG, "Configuring ADC...");
     adc_oneshot_unit_handle_t adc1_handle;
     adc_oneshot_unit_init_cfg_t init_config1 = {
         .unit_id = ADC_UNIT_1,
@@ -163,18 +181,32 @@ void app_main(void)
     int voltage_value;
 
     // calculate median value for control
-    int median_value = 0;
+    int median_voltage = 0;
     for (int i = 0; i < 50; i++) {
         ESP_ERROR_CHECK(adc_oneshot_read(adc1_handle, POT_ADC_CHANNEL, &raw_value));
-        median_value += raw_value;
+        median_voltage += raw_value;
     }
-    median_value /= 50;
-    ESP_LOGI(ADC_TAG, "Median Value: %d", median_value);
-    current_status.SetRaw(median_value);
+    median_voltage /= 50;
+    ESP_LOGI(ADC_TAG, "Median Value: %d", median_voltage);
+    current_status = ControlStatus(DEFAULT_P, DEFAULT_I, DEFAULT_D, ModeType::STANDING, ParamType::P, LockType::UNLOCKED);
+    current_status.SetRaw(median_voltage);
+    if (do_calibration1_control) {
+        ESP_ERROR_CHECK(adc_cali_raw_to_voltage(adc1_cali_control_handle, current_status.adc_raw, &median_voltage));
+        current_status.SetVoltage(voltage_value);
+    }
+
+    ESP_LOGI(ADC_TAG, "ADC for POT configured on GPIO %d", POT_ADC_CHANNEL);
 
     update_display();
 
+    // JOYSTICK
+    // Configure GPIO for joystick
+    param = PinGPIODefinition(JOYSTICK_BUTTON_PIN, GPIO_MODE_INPUT, GPIO_PULLDOWN_DISABLE);
+    param.Configure();
+    ESP_LOGI(JOYSTICK_TAG, "Joystick button configured on GPIO %d", JOYSTICK_BUTTON_PIN);
+
     // Configure Joystick ADC
+    ESP_LOGI(JOYSTICK_TAG, "Configuring ADC for Joystick...");
     int raw_value_joystick_x, raw_value_joystick_y;
     int voltage_value_joystick_x, voltage_value_joystick_y;
 
@@ -203,24 +235,10 @@ void app_main(void)
     median_value_joystick_y /= 50;
     current_status.default_X = median_value_joystick_x;
     current_status.default_Y = median_value_joystick_y;
-    ESP_LOGI(JOYSTICK_TAG, "Median X: %d Y: %d", median_value_joystick_x, median_value_joystick_y);
+    ESP_LOGI(JOYSTICK_TAG, "ADC for Joystick configured on GPIO %d and %d", JOYSTICK_X, JOYSTICK_Y);
+    ESP_LOGI(JOYSTICK_TAG, "Median Value X: %d Y: %d", median_value_joystick_x, median_value_joystick_y);
 
-    // Configure button with pull-down
-    gpio_config_t io_conf;
-    io_conf.intr_type = GPIO_INTR_DISABLE; // Disable interrupt
-    io_conf.mode = GPIO_MODE_INPUT;       // Set as input
-    io_conf.pin_bit_mask = (1ULL << JOYSTICK_BUTTON); // GPIO pin
-    io_conf.pull_down_en = GPIO_PULLDOWN_DISABLE; // Disable pull-down
-    io_conf.pull_up_en = GPIO_PULLUP_ENABLE;      // Enable pull-up
-    esp_err_t ret = gpio_config(&io_conf);
-
-    // Check if GPIO configuration was successful
-    if (ret != ESP_OK) {
-        ESP_LOGE(MAIN_TAG, "Failed to configure button GPIO: %s", esp_err_to_name(ret));
-    } else {
-        ESP_LOGI(MAIN_TAG, "Button GPIO configured successfully");
-    }
-
+    bool firstRun = true;
     for (;;)
     {
         // led based on current mode
@@ -235,23 +253,32 @@ void app_main(void)
         if (!gpio_get_level(MODE_PIN)) {
             current_status.NextMode();
         }
-        if (!gpio_get_level(PARAM_PIN)){
+        if (!gpio_get_level(BLOCK_PIN)){
+            current_status.NextLock();
+        }
+        if(!gpio_get_level(JOYSTICK_BUTTON_PIN)) {
             current_status.NextParam();
         }
         
         // Read Control values
-        ESP_ERROR_CHECK(adc_oneshot_read(adc1_handle, POT_ADC_CHANNEL, &raw_value));
-        current_status.SetRaw(raw_value);
-        
-        if (do_calibration1_control) {
-            ESP_ERROR_CHECK(adc_cali_raw_to_voltage(adc1_cali_control_handle, current_status.adc_raw, &voltage_value));
-            current_status.SetVoltage(voltage_value);
-        }
-        
-        pid_orientation = current_status.ControlChanged();
-        if (pid_orientation != 0)
-        {
-            update_pid(pid_orientation);
+        if (current_status.current_lock == LockType::UNLOCKED){
+            ESP_ERROR_CHECK(adc_oneshot_read(adc1_handle, POT_ADC_CHANNEL, &raw_value));
+            current_status.SetRaw(raw_value);
+            
+            if (do_calibration1_control) {
+                ESP_ERROR_CHECK(adc_cali_raw_to_voltage(adc1_cali_control_handle, current_status.adc_raw, &voltage_value));
+                current_status.SetVoltage(voltage_value);
+            }
+            
+            pid_orientation = current_status.ControlChanged();
+            if (pid_orientation != 0 && !firstRun)
+            {
+                update_pid(pid_orientation);
+            }
+            else
+            {
+                firstRun = false;
+            }
         }
 
         // Read joystick values
@@ -267,23 +294,26 @@ void app_main(void)
         
         if (current_status.HasChanged())
         {
-            ESP_LOGI(MAIN_TAG, "Current Mode: %s - Current Param: %s.", current_status.ModeToString(), current_status.ParamToString());
-            ESP_LOGI(ADC_TAG, "ADC%d Channel[%d] Raw Data: %d", ADC_UNIT_1 + 1, POT_ADC_CHANNEL, current_status.adc_raw);
-            ESP_LOGI(ADC_TAG, "ADC%d Channel[%d] Cali Voltage: %d mV", ADC_UNIT_1 + 1, POT_ADC_CHANNEL, current_status.voltage);
-            ESP_LOGI(PARAMS_TAG, "P: %d I: %d D: %.1f", current_status.current_P, current_status.current_I, current_status.current_D);
-            ESP_LOGI(JOYSTICK_TAG, "X:%d Y:%d", current_status.current_X, current_status.current_Y);
+            ESP_LOGI(REPORT_TAG, "Current Mode: %s - Current Param: %s - Lock status: %s", 
+                current_status.ModeToString(), current_status.ParamToString(), current_status.LockToString());
+            ESP_LOGI(REPORT_TAG, "ADC%d Channel[%d] Raw Data: %d", ADC_UNIT_1 + 1, POT_ADC_CHANNEL, current_status.adc_raw);
+            ESP_LOGI(REPORT_TAG, "ADC%d Channel[%d] Cali Voltage: %d mV", ADC_UNIT_1 + 1, POT_ADC_CHANNEL, current_status.voltage);
+            ESP_LOGI(REPORT_TAG, "P: %d I: %d D: %.1f", current_status.current_P, current_status.current_I, current_status.current_D);
+            ESP_LOGI(REPORT_TAG, "X: %d Y: %d", current_status.current_X, current_status.current_Y);
             
             update_display();
         } 
         else 
         {
+            // ESP_LOGI(REPORT_TAG, "X: %d Y: %d", current_status.current_X, current_status.current_Y);
             update_movement_display();
         }
 
-        vTaskDelay(pdMS_TO_TICKS(100));
+        vTaskDelay(pdMS_TO_TICKS(50));
     }
 
     // Tear Down
+    ESP_LOGI(MAIN_TAG, "Tearing down application...");
     ESP_ERROR_CHECK(adc_oneshot_del_unit(adc1_handle));
     if (do_calibration1_control)
     {
@@ -297,6 +327,7 @@ void app_main(void)
     {
         example_adc_calibration_deinit(adc1_cali_joy_y_handle);
     }
+    ESP_LOGI(MAIN_TAG, "Application teardown complete.");
 }
 
 
