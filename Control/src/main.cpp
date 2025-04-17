@@ -136,7 +136,8 @@ void app_main(void)
     ssd1306_init(&oled_dev, 128, 32);
     ssd1306_clear_screen(&oled_dev, false);
     ssd1306_contrast(&oled_dev, 0xff);
-    ssd1306_display_text(&oled_dev, 0, "STARTING...", 9, false);
+    char starting_text[] = "STARTING...";
+    ssd1306_display_text(&oled_dev, 0, starting_text, 9, false);
 
     ESP_LOGI(SCREEN_TAG, "SSD1306 initialized");
 
@@ -164,6 +165,8 @@ void app_main(void)
     adc_oneshot_unit_handle_t adc1_handle;
     adc_oneshot_unit_init_cfg_t init_config1 = {
         .unit_id = ADC_UNIT_1,
+        .clk_src = ADC_DIGI_CLK_SRC_DEFAULT,
+        .ulp_mode = ADC_ULP_MODE_DISABLE,
     };
     ESP_ERROR_CHECK(adc_oneshot_new_unit(&init_config1, &adc1_handle));
 
