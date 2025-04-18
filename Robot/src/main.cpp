@@ -4,6 +4,8 @@
 #include <driver/ledc.h>
 #include <esp_log.h>
 
+#include "libnow.h"
+
 #include <MotorControl.h>
 #include <bmi160_wrapper.h>
 #include <PIDService.h>

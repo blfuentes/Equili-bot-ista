@@ -13,6 +13,8 @@
 #include <ssd1306.h>
 #include <font8x8_basic.h>
 
+#include "libnow.h"
+
 #include "ControlStatus.h"
 #include "PinDefinition.h"
 
@@ -24,6 +26,11 @@ static const char *BLOCK_TAG = "block_log";
 static const char *SCREEN_TAG = "ssd1306_log";
 static const char *JOYSTICK_TAG = "joystick_log";
 static const char *REPORT_TAG = "report_log";
+static const char *LIBNOW_TAG = "libnow_log";
+
+// Libnow
+#define MAC_MANDO { 0x3c, 0x84, 0x27, 0xad, 0xe5, 0x18 }
+
 
 // Led
 constexpr gpio_num_t LED_PIN = GPIO_NUM_4;
@@ -240,6 +247,21 @@ void app_main(void)
     ESP_LOGI(JOYSTICK_TAG, "ADC for Joystick configured on GPIO %d and %d", JOYSTICK_CHANNEL_X, JOYSTICK_CHANNEL_Y);
     ESP_LOGI(JOYSTICK_TAG, "Median Value X: %d Y: %d", median_value_joystick_x, median_value_joystick_y);
 
+    // Initialize LibNow
+    ESP_LOGI(LIBNOW_TAG, "Initializing LibNow...");
+    libnow_init();
+    libnow_addPeer(LibNowDst::DST_ROBOT);
+    ESP_LOGI(LIBNOW_TAG, "LibNow initialized");
+
+    message_control_status msg = {
+        .mode = static_cast<uint8_t>(current_status.current_mode),
+        .move_x = current_status.current_X,
+        .move_y = current_status.current_Y,
+        .param_p = current_status.current_P,
+        .param_i = current_status.current_I,
+        .param_d = current_status.current_D
+    };
+
     bool firstRun = true;
     for (;;)
     {
@@ -310,6 +332,18 @@ void app_main(void)
             // ESP_LOGI(REPORT_TAG, "X: %d Y: %d", current_status.current_X, current_status.current_Y);
             update_movement_display();
         }
+
+        // Send message to robot
+        msg = {
+            .mode = static_cast<uint8_t>(current_status.current_mode),
+            .move_x = current_status.current_X,
+            .move_y = current_status.current_Y,
+            .param_p = current_status.current_P,
+            .param_i = current_status.current_I,
+            .param_d = current_status.current_D
+        };
+        libnow_sendMessage(LibNowDst::DST_ROBOT, &msg);
+        ESP_LOGI(LIBNOW_TAG, "Message sent to robot.");
 
         vTaskDelay(pdMS_TO_TICKS(50));
     }
