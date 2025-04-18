@@ -2,19 +2,19 @@
 #include <freertos/task.h>
 #include <driver/gpio.h>
 #include <driver/ledc.h>
-#include "esp_adc/adc_oneshot.h"
-#include "esp_adc/adc_cali.h"
-#include "esp_adc/adc_cali_scheme.h"
+#include <esp_adc/adc_oneshot.h>
+#include <esp_adc/adc_cali.h>
+#include <esp_adc/adc_cali_scheme.h>
 #include <esp_log.h>
 #include <esp_err.h>
 #include <memory>
+#include <string.h>
 
-#include "ssd1306.h"
-#include "font8x8_basic.h"
+#include <ssd1306.h>
+#include <font8x8_basic.h>
 
 #include "ControlStatus.h"
 #include "PinDefinition.h"
-#include <string.h>
 
 // Logger tag for ESP-IDF logging
 static const char *MAIN_TAG = "main_log";
@@ -38,7 +38,7 @@ constexpr gpio_num_t BLOCK_PIN = GPIO_NUM_8;
 PinGPIODefinition block;
 
 // Control
-constexpr gpio_num_t CONTROL_PIN = GPIO_NUM_3;
+constexpr gpio_num_t POT_PIN = GPIO_NUM_3;
 constexpr adc_channel_t POT_ADC_CHANNEL = ADC_CHANNEL_3; // GPIO03
 constexpr adc_atten_t ADC_ATTEN = ADC_ATTEN_DB_12; // 0-3.1V range
 
@@ -50,7 +50,6 @@ ControlStatus current_status;
 
 // Screen
 SSD1306_t oled_dev;
-int center, top, bottom;
 char lock_display = {0}; // Single reusable buffer
 char display_buffer[16] = {0};  // Single reusable buffer
 
@@ -60,8 +59,8 @@ constexpr int DEFAULT_I = 10;
 constexpr int DEFAULT_D = 1;
 
 // JOYSTICK
-constexpr adc_channel_t JOYSTICK_X = ADC_CHANNEL_0; // GPIO00
-constexpr adc_channel_t JOYSTICK_Y = ADC_CHANNEL_1; // GPIO01
+constexpr adc_channel_t JOYSTICK_CHANNEL_X = ADC_CHANNEL_0; // GPIO00
+constexpr adc_channel_t JOYSTICK_CHANNEL_Y = ADC_CHANNEL_1; // GPIO01
 constexpr gpio_num_t JOYSTICK_BUTTON_PIN = GPIO_NUM_9;
 PinGPIODefinition param;
 
@@ -217,20 +216,20 @@ void app_main(void)
         .atten = ADC_ATTEN,
         .bitwidth = ADC_BITWIDTH_DEFAULT,
     };
-    ESP_ERROR_CHECK(adc_oneshot_config_channel(adc1_handle, JOYSTICK_X, &config_joystick));
-    ESP_ERROR_CHECK(adc_oneshot_config_channel(adc1_handle, JOYSTICK_Y, &config_joystick));
+    ESP_ERROR_CHECK(adc_oneshot_config_channel(adc1_handle, JOYSTICK_CHANNEL_X, &config_joystick));
+    ESP_ERROR_CHECK(adc_oneshot_config_channel(adc1_handle, JOYSTICK_CHANNEL_Y, &config_joystick));
 
     adc_cali_handle_t adc1_cali_joy_x_handle = NULL;
-    bool do_calibration1_joy_x = example_adc_calibration_init(ADC_UNIT_1, JOYSTICK_X, ADC_ATTEN, &adc1_cali_joy_x_handle);
+    bool do_calibration1_joy_x = example_adc_calibration_init(ADC_UNIT_1, JOYSTICK_CHANNEL_X, ADC_ATTEN, &adc1_cali_joy_x_handle);
     adc_cali_handle_t adc1_cali_joy_y_handle = NULL;
-    bool do_calibration1_joy_y = example_adc_calibration_init(ADC_UNIT_1, JOYSTICK_Y, ADC_ATTEN, &adc1_cali_joy_y_handle);    
+    bool do_calibration1_joy_y = example_adc_calibration_init(ADC_UNIT_1, JOYSTICK_CHANNEL_Y, ADC_ATTEN, &adc1_cali_joy_y_handle);    
 
     // calculate median value for joystick
     int median_value_joystick_x = 0;
     int median_value_joystick_y = 0;
     for (int i = 0; i < 50; i++) {
-        ESP_ERROR_CHECK(adc_oneshot_read(adc1_handle, JOYSTICK_X, &raw_value_joystick_x));
-        ESP_ERROR_CHECK(adc_oneshot_read(adc1_handle, JOYSTICK_Y, &raw_value_joystick_y));
+        ESP_ERROR_CHECK(adc_oneshot_read(adc1_handle, JOYSTICK_CHANNEL_X, &raw_value_joystick_x));
+        ESP_ERROR_CHECK(adc_oneshot_read(adc1_handle, JOYSTICK_CHANNEL_Y, &raw_value_joystick_y));
         median_value_joystick_x += raw_value_joystick_x;
         median_value_joystick_y += raw_value_joystick_y;
     }
@@ -238,7 +237,7 @@ void app_main(void)
     median_value_joystick_y /= 50;
     current_status.default_X = median_value_joystick_x;
     current_status.default_Y = median_value_joystick_y;
-    ESP_LOGI(JOYSTICK_TAG, "ADC for Joystick configured on GPIO %d and %d", JOYSTICK_X, JOYSTICK_Y);
+    ESP_LOGI(JOYSTICK_TAG, "ADC for Joystick configured on GPIO %d and %d", JOYSTICK_CHANNEL_X, JOYSTICK_CHANNEL_Y);
     ESP_LOGI(JOYSTICK_TAG, "Median Value X: %d Y: %d", median_value_joystick_x, median_value_joystick_y);
 
     bool firstRun = true;
@@ -285,8 +284,8 @@ void app_main(void)
         }
 
         // Read joystick values
-        ESP_ERROR_CHECK(adc_oneshot_read(adc1_handle, JOYSTICK_X, &raw_value_joystick_x));
-        ESP_ERROR_CHECK(adc_oneshot_read(adc1_handle, JOYSTICK_Y, &raw_value_joystick_y));
+        ESP_ERROR_CHECK(adc_oneshot_read(adc1_handle, JOYSTICK_CHANNEL_X, &raw_value_joystick_x));
+        ESP_ERROR_CHECK(adc_oneshot_read(adc1_handle, JOYSTICK_CHANNEL_Y, &raw_value_joystick_y));
         if(do_calibration1_joy_x) {
             ESP_ERROR_CHECK(adc_cali_raw_to_voltage(adc1_cali_joy_x_handle, raw_value_joystick_x, &voltage_value_joystick_x));
         }
