@@ -10,7 +10,7 @@
 #include "libnow.h"
 
 #define MAC_MANDO { 0x3c, 0x84, 0x27, 0xad, 0xe5, 0x18 }
-#define MAC_ROBOT { 0x78,0x21,0x84,0xe0,0xb1,0x94}
+#define MAC_ROBOT { 0xd8, 0xbc, 0x38, 0xf9, 0x3b, 0x4c }
 
 uint8_t MACS[2][6] = {MAC_ROBOT, MAC_MANDO};
 
@@ -53,46 +53,15 @@ void libnow_addPeer(LibNowDst dst)
     ESP_ERROR_CHECK(esp_now_add_peer(&peer_info));
 }
 
-void libnow_sendMessage(LibNowDst dst, message_move *msg)
-{
-
-    typedef struct 
-    {
-        uint8_t type;
-        message_move msg;
-    } __attribute__((packed)) full_message;
-
-    full_message full_msg = {MOVE, *msg};
-
-    esp_now_send(MACS[dst], (uint8_t *)&full_msg, sizeof(full_msg));
-
-    
-}
-
-void libnow_sendMessage(LibNowDst dst, message_cal *msg)
-{
-
-    typedef struct 
-    {
-        uint8_t type;
-        message_cal msg;
-    } __attribute__((packed)) full_message;
-
-    full_message full_msg = {CALIBRATE, *msg};
-
-    esp_now_send(MACS[dst], (uint8_t *)&full_msg, sizeof(full_msg));
-}
-
 void libnow_sendMessage(LibNowDst dst, message_control_status *msg)
 {
 
     typedef struct 
     {
-        uint8_t type;
         message_control_status msg;
     } __attribute__((packed)) full_message;
 
-    full_message full_msg = {MOVE, *msg};
+    full_message full_msg = { *msg };
 
     esp_now_send(MACS[dst], (uint8_t *)&full_msg, sizeof(full_msg));
 }

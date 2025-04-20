@@ -9,7 +9,7 @@ constexpr int VoltageChangeThreshold = 30;
 
 ControlStatus::ControlStatus(){};
 
-ControlStatus::ControlStatus(int p, int i, float d, ModeType mode, ParamType param, LockType lock)
+ControlStatus::ControlStatus(float p, float i, float d, ModeType mode, ParamType param, LockType lock)
     :   current_P(p),
         current_I(i),
         current_D(d),

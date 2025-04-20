@@ -31,7 +31,6 @@ static const char *LIBNOW_TAG = "libnow_log";
 // Libnow
 #define MAC_MANDO { 0x3c, 0x84, 0x27, 0xad, 0xe5, 0x18 }
 
-
 // Led
 constexpr gpio_num_t LED_PIN = GPIO_NUM_4;
 PinGPIODefinition led;
@@ -61,9 +60,9 @@ char lock_display = {0}; // Single reusable buffer
 char display_buffer[16] = {0};  // Single reusable buffer
 
 // PID defaults
-constexpr int DEFAULT_P = 100;
-constexpr int DEFAULT_I = 10;
-constexpr int DEFAULT_D = 1;
+constexpr float DEFAULT_P = 250;
+constexpr float DEFAULT_I = 0;
+constexpr float DEFAULT_D = 0;
 
 // JOYSTICK
 constexpr adc_channel_t JOYSTICK_CHANNEL_X = ADC_CHANNEL_0; // GPIO00

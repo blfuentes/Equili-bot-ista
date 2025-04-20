@@ -29,8 +29,8 @@ class ControlStatus {
         int prev_raw;
         int prev_voltage;
     public:
-        int current_P;
-        int current_I;
+        float current_P;
+        float current_I;
         float current_D;
         ModeType current_mode;
         ParamType current_param;
@@ -44,7 +44,7 @@ class ControlStatus {
         int current_Y;
 
         ControlStatus();
-        ControlStatus(int p, int i, float d, ModeType mode, ParamType param, LockType lock);
+        ControlStatus(float p, float i, float d, ModeType mode, ParamType param, LockType lock);
 
         int ControlChanged();
         bool HasChanged();
