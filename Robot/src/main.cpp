@@ -10,6 +10,7 @@
 #include "MotorControl.h"
 #include "bmi160_wrapper.h"
 #include "PIDService.h"
+#include "RobotControl.h"
 
 // Libnow
 #define MAC_ROBOT { 0xd8, 0xbc, 0x38, 0xf9, 0x3b, 0x4c }
@@ -35,9 +36,7 @@ constexpr gpio_num_t STBY = GPIO_NUM_33;
 
 constexpr ledc_mode_t LEDC_SPEED_MODE = LEDC_LOW_SPEED_MODE;
 
-MotorDefinition rightMotor;
-MotorDefinition leftMotor;
-PinGPIODefinition stby;
+RobotDefinition robot;   
 
 // bmi pins
 Bmi160<Bmi160SpiConfig> imu;
@@ -62,7 +61,7 @@ static void recvcb(const esp_now_recv_info_t * esp_now_info, const uint8_t *data
     // ESP_LOGI(MESSAGE_TAG, "Message received");
     message_control_status msg = *(message_control_status*)&data[0];
     doWhenMove(msg);
-    ESP_LOGI(MESSAGE_TAG, "Message received. Mode: %d, Move X: %d, Move Y: %d, Param P: %d, Param I: %d, Param D: %.1f", 
+    ESP_LOGI(MESSAGE_TAG, "Message received. Mode: %d, Move X: %d, Move Y: %d, Param P: %f, Param I: %f, Param D: %.1f", 
         msg.mode, msg.move_x, msg.move_y, msg.param_p, msg.param_i, msg.param_d);
 
 }
@@ -70,6 +69,11 @@ static void recvcb(const esp_now_recv_info_t * esp_now_info, const uint8_t *data
 void app_main(void)
 {
     vTaskDelay(pdMS_TO_TICKS(1000));
+
+    // Robot parts
+    MotorDefinition rightMotor;
+    MotorDefinition leftMotor;
+    PinGPIODefinition stby;
 
     // Initialize LibNow
     ESP_LOGI(LIBNOW_TAG, "Initializing LibNow...");
@@ -86,14 +90,11 @@ void app_main(void)
     ESP_LOGI(MOTOR_TAG, "Left motor configured on GPIO %d and %d", MOTOR_B_IN_1, MOTOR_B_IN_2);
     stby = PinGPIODefinition(STBY, GPIO_MODE_OUTPUT, GPIO_PULLDOWN_DISABLE);
 
-    rightMotor.Configure();
-    leftMotor.Configure();
-    stby.Configure();
+    robot = RobotDefinition(rightMotor, leftMotor, stby, 0, 10);
+    robot.Configure();
 
     ESP_LOGI(MOTOR_TAG, "Motors configured");
     ESP_LOGI(MAIN_TAG, "GPIOs configured");
-
-    gpio_set_level(STBY, 1);
 
     // Configuring bmi
     ESP_LOGI(IMU_TAG, "Configuring BMI160 IMU...");
@@ -167,6 +168,7 @@ void app_main(void)
             alpha = (alpha + gyro_data.adj_data.x*dt ) * factor + accel_data.adj_data.y*9.8f * (1-factor);
             motorSpeed = pid.update(-alpha - offsetAlpha, dt);
 
+            Direction correctionDir = { X_Direction::X_CENTER, Y_Direction::Y_CENTER};
             if (motorSpeed > 1023) {
                 motorSpeed = 1023;
             }
@@ -174,9 +176,11 @@ void app_main(void)
                 motorSpeed = -1023;
             }
 
-            // ESP_LOGI(ACTION_TAG, "Angle: %6f - Motor speed: %6ld", alpha, motorSpeed);
-            // rightMotor.Drive(motorSpeed);
-            // leftMotor.Drive(motorSpeed, 10);
+            if (motorSpeed != 0)
+                correctionDir.vertical = motorSpeed > 0 ? Y_Direction::FORWARD : Y_Direction::BACKWARD;
+
+            ESP_LOGI(ACTION_TAG, "Angle: %6f - Motor speed: %6ld", alpha, motorSpeed);
+            robot.Drive(correctionDir, motorSpeed);
             
             vTaskDelay(pdMS_TO_TICKS(20));
         }

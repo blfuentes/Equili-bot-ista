@@ -4,8 +4,9 @@
 #include <freertos/FreeRTOS.h>
 #include <freertos/task.h>
 #include <driver/gpio.h>
-#include "driver/ledc.h"
-#include "esp_err.h"
+#include <driver/ledc.h>
+#include <esp_err.h>
+
 #include "PinDefinition.h"
 
 constexpr int DEFAULT_SPEED = 392;
