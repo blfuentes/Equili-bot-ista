@@ -21,8 +21,8 @@ struct Direction {
 };
 
 class RobotDefinition {
-    MotorDefinition rightMotor;
     MotorDefinition leftMotor;
+    MotorDefinition rightMotor;
 
     PinGPIODefinition stby;
 
@@ -31,11 +31,14 @@ class RobotDefinition {
 
     public:
         RobotDefinition();
-        RobotDefinition(MotorDefinition rightMotor, MotorDefinition leftMotor, PinGPIODefinition stby, int leftCorrection, int rightCorrection);
+        RobotDefinition(MotorDefinition leftMotor, MotorDefinition rightMotor, PinGPIODefinition stby, int leftCorrection, int rightCorrection);
 
         void Configure();
         void Drive(Direction dir, int speed);
         void Stop();
+
+        const char* X_DirectionToString(X_Direction dir);
+        const char* Y_DirectionToString(Y_Direction dir);
 };
 
 

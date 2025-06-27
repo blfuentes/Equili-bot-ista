@@ -11,6 +11,7 @@
 #include "bmi160_wrapper.h"
 #include "PIDService.h"
 #include "RobotControl.h"
+#include <esp_timer.h>
 
 // Libnow
 #define MAC_ROBOT { 0xd8, 0xbc, 0x38, 0xf9, 0x3b, 0x4c }
@@ -37,6 +38,8 @@ constexpr gpio_num_t STBY = GPIO_NUM_33;
 constexpr ledc_mode_t LEDC_SPEED_MODE = LEDC_LOW_SPEED_MODE;
 
 RobotDefinition robot;   
+static const int BASE_SPEED = 392; // Default speed for motors
+static const int CORRECTION_LIMIT = 20; // Limit for correction speed
 
 // bmi pins
 Bmi160<Bmi160SpiConfig> imu;
@@ -46,7 +49,10 @@ gpio_num_t sclk_pin = GPIO_NUM_4;
 gpio_num_t cs_pin   = GPIO_NUM_17;
 
 // PID
-PidService pid(250, 0, 0);
+PidService pid(200, 0, 0);
+
+// Constants
+constexpr float alpha_threshold = 0.5f; // Threshold for alpha to reset it to 0
 
 extern "C" void app_main();
 
@@ -68,12 +74,14 @@ static void recvcb(const esp_now_recv_info_t * esp_now_info, const uint8_t *data
 
 void app_main(void)
 {
-    vTaskDelay(pdMS_TO_TICKS(1000));
+    vTaskDelay(pdMS_TO_TICKS(500));
 
     // Robot parts
     MotorDefinition rightMotor;
     MotorDefinition leftMotor;
     PinGPIODefinition stby;
+
+    Direction correctionDir = { X_Direction::X_CENTER, Y_Direction::Y_CENTER};
 
     // Initialize LibNow
     ESP_LOGI(LIBNOW_TAG, "Initializing LibNow...");
@@ -90,7 +98,7 @@ void app_main(void)
     ESP_LOGI(MOTOR_TAG, "Left motor configured on GPIO %d and %d", MOTOR_B_IN_1, MOTOR_B_IN_2);
     stby = PinGPIODefinition(STBY, GPIO_MODE_OUTPUT, GPIO_PULLDOWN_DISABLE);
 
-    robot = RobotDefinition(rightMotor, leftMotor, stby, 0, 10);
+    robot = RobotDefinition(leftMotor, rightMotor, stby, 0, 0);
     robot.Configure();
 
     ESP_LOGI(MOTOR_TAG, "Motors configured");
@@ -134,39 +142,54 @@ void app_main(void)
         gyro_offset_x /= num_samples;
         gyro_offset_y /= num_samples;
         gyro_offset_z /= num_samples;
+        ESP_LOGI(IMU_TAG, "Calibration complete. Offsets: x: %f y: %f z: %f", gyro_offset_x, gyro_offset_y, gyro_offset_z);
 
-        //
+        // calibrate offsetalhpa
         float alpha = 0.0f; // [degree]
         float factor = 0.995f;
         float lastTime = 0.0f;
         float dt;
         int32_t motorSpeed;
 
-        ESP_LOGI(IMU_TAG, "Calibration complete. Offsets: x: %f y: %f z: %f", gyro_offset_x, gyro_offset_y, gyro_offset_z);
         // flattern data
-        gyro_data.adj_data.x = gyro_data.adj_data.x - gyro_offset_x;
-        gyro_data.adj_data.y = gyro_data.adj_data.y - gyro_offset_y;
-        gyro_data.adj_data.z = gyro_data.adj_data.z - gyro_offset_z;
+        if (fabs(gyro_data.adj_data.x) < gyro_offset_x) gyro_data.adj_data.x = 0.0f;
+        if (fabs(gyro_data.adj_data.y) < gyro_offset_y) gyro_data.adj_data.y = 0.0f;
+        if (fabs(gyro_data.adj_data.z) < gyro_offset_z) gyro_data.adj_data.z = 0.0f;
 
         dt = (gyro_data.adj_data.sensortime - lastTime) / 1000.0f;
         lastTime = gyro_data.adj_data.sensortime;
 
-        float offsetAlpha = (alpha + gyro_data.adj_data.x * dt) * factor + accel_data.adj_data.y * 9.8f * (1 - factor);
+        alpha = atan2f(accel_data.adj_data.y, accel_data.adj_data.z)*180.0f/M_PI_2;
+        ESP_LOGI(IMU_TAG, "Initial alpha: %6f", alpha);
+        // float offsetAlpha = (alpha + gyro_data.adj_data.x * dt) * factor + accel_data.adj_data.y * 9.8f * (1 - factor);
+        // ESP_LOGI(IMU_TAG, "Initial alpha: %6f", offsetAlpha);
         for(;;)
         {
             // get bmi data
             imu.getData(accel_data, gyro_data);
 
             // flattern data
-            gyro_data.adj_data.x = gyro_data.adj_data.x - gyro_offset_x;
-            gyro_data.adj_data.y = gyro_data.adj_data.y - gyro_offset_y;
-            gyro_data.adj_data.z = gyro_data.adj_data.z - gyro_offset_z;
+            // ESP_LOGI(IMU_TAG, "Adjusted gyro data: x: %f y: %f z: %f", gyro_data.adj_data.x, gyro_data.adj_data.y, gyro_data.adj_data.z);
+
+            if (fabs(gyro_data.adj_data.x) < gyro_offset_x) gyro_data.adj_data.x = 0.0f;
+            if (fabs(gyro_data.adj_data.y) < gyro_offset_y) gyro_data.adj_data.y = 0.0f;
+            if (fabs(gyro_data.adj_data.z) < gyro_offset_z) gyro_data.adj_data.z = 0.0f;
+
+            // ESP_LOGI(IMU_TAG, "Adjusted gyro data: x: %f y: %f z: %f", gyro_data.adj_data.x, gyro_data.adj_data.y, gyro_data.adj_data.z);
+            // ESP_LOGI(IMU_TAG, "Adjusted accel data: x: %f y: %f z: %f", accel_data.adj_data.x, accel_data.adj_data.y, accel_data.adj_data.z);
 
             dt = (gyro_data.adj_data.sensortime - lastTime)/1000.0f;
             lastTime = gyro_data.adj_data.sensortime;
 
-            alpha = (alpha + gyro_data.adj_data.x*dt ) * factor + accel_data.adj_data.y*9.8f * (1-factor);
-            motorSpeed = pid.update(-alpha - offsetAlpha, dt);
+            alpha = (alpha + gyro_data.adj_data.x*dt ) * factor + atan2f(accel_data.adj_data.y, accel_data.adj_data.z)*180.0f/M_PI_2 * (1-factor);
+            ESP_LOGI(IMU_TAG, "Alpha: %6f - Gyro X: %6f - Accel Y: %6f", alpha, gyro_data.adj_data.x, accel_data.adj_data.y);
+
+            // alpha = (alpha + gyro_data.adj_data.x * dt ) * factor + accel_data.adj_data.y * 9.8f * (1-factor);
+
+            if (fabs(alpha) < alpha_threshold) {
+                alpha = 0.0f;
+            }
+            motorSpeed = pid.update(alpha, dt);
 
             Direction correctionDir = { X_Direction::X_CENTER, Y_Direction::Y_CENTER};
             if (motorSpeed > 1023) {
@@ -179,10 +202,10 @@ void app_main(void)
             if (motorSpeed != 0)
                 correctionDir.vertical = motorSpeed > 0 ? Y_Direction::FORWARD : Y_Direction::BACKWARD;
 
-            ESP_LOGI(ACTION_TAG, "Angle: %6f - Motor speed: %6ld", alpha, motorSpeed);
-            robot.Drive(correctionDir, motorSpeed);
+            // ESP_LOGI(ACTION_TAG, "Angle: %6f - Motor speed: %6ld", alpha, motorSpeed);
+            // robot.Drive(correctionDir, motorSpeed);
             
-            vTaskDelay(pdMS_TO_TICKS(20));
+            vTaskDelay(pdMS_TO_TICKS(1000));
         }
     }
 }

@@ -1,9 +1,23 @@
 #include "RobotControl.h"
+#include <array>
 
 RobotDefinition::RobotDefinition(){};
 
-RobotDefinition::RobotDefinition(MotorDefinition rightMotor, MotorDefinition leftMotor, PinGPIODefinition stby, int leftCorrection, int rightCorrection)
-    : rightMotor(rightMotor), leftMotor(leftMotor), stby(stby), leftCorrection(leftCorrection), rightCorrection(rightCorrection) {}
+RobotDefinition::RobotDefinition(MotorDefinition leftMotor, MotorDefinition rightMotor, PinGPIODefinition stby, int leftCorrection, int rightCorrection)
+    : leftMotor(leftMotor), rightMotor(rightMotor), stby(stby), leftCorrection(leftCorrection), rightCorrection(rightCorrection) {}
+
+constexpr std::array<const char*, 3> X_DirectionStrings = { "Right", "Center", "Left" };
+constexpr std::array<const char*, 3> Y_DirectionStrings = { "Forward", "Center", "Backward" };
+
+const char* RobotDefinition::X_DirectionToString(X_Direction dir)
+{
+    return X_DirectionStrings.at(static_cast<size_t>(dir));
+};
+
+const char* RobotDefinition::Y_DirectionToString(Y_Direction dir)
+{
+    return Y_DirectionStrings.at(static_cast<size_t>(dir));
+}
 
 void RobotDefinition::Configure()
 {
