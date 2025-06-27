@@ -49,7 +49,7 @@ gpio_num_t sclk_pin = GPIO_NUM_4;
 gpio_num_t cs_pin   = GPIO_NUM_17;
 
 // PID
-PidService pid(200, 0, 0);
+PidService pid(350, 0, 0);
 
 // Constants
 constexpr float alpha_threshold = 0.5f; // Threshold for alpha to reset it to 0
@@ -159,7 +159,9 @@ void app_main(void)
         dt = (gyro_data.adj_data.sensortime - lastTime) / 1000.0f;
         lastTime = gyro_data.adj_data.sensortime;
 
-        alpha = atan2f(accel_data.adj_data.y, accel_data.adj_data.z)*180.0f/M_PI_2;
+        ESP_LOGI(IMU_TAG, "Initial gyro data: x: %f y: %f z: %f", gyro_data.adj_data.x, gyro_data.adj_data.y, gyro_data.adj_data.z);
+        ESP_LOGI(IMU_TAG, "Initial accel data: x: %f y: %f z: %f", accel_data.adj_data.x, accel_data.adj_data.y, accel_data.adj_data.z);
+        alpha = atan2f(accel_data.adj_data.z, accel_data.adj_data.y)*180.0f/M_PI;
         ESP_LOGI(IMU_TAG, "Initial alpha: %6f", alpha);
         // float offsetAlpha = (alpha + gyro_data.adj_data.x * dt) * factor + accel_data.adj_data.y * 9.8f * (1 - factor);
         // ESP_LOGI(IMU_TAG, "Initial alpha: %6f", offsetAlpha);
@@ -181,11 +183,17 @@ void app_main(void)
             dt = (gyro_data.adj_data.sensortime - lastTime)/1000.0f;
             lastTime = gyro_data.adj_data.sensortime;
 
-            alpha = (alpha + gyro_data.adj_data.x*dt ) * factor + atan2f(accel_data.adj_data.y, accel_data.adj_data.z)*180.0f/M_PI_2 * (1-factor);
-            ESP_LOGI(IMU_TAG, "Alpha: %6f - Gyro X: %6f - Accel Y: %6f", alpha, gyro_data.adj_data.x, accel_data.adj_data.y);
+            alpha = (alpha + gyro_data.raw_data.x*dt ) * factor + atan2f(accel_data.raw_data.z, accel_data.raw_data.y)*180.0f/M_PI * (1-factor);
+            // if ((alpha > -45.0f) || (alpha < -90-45) )
+            // {
+            //     robot.Drive(correctionDir, 0);
+            //     vTaskDelay(pdMS_TO_TICKS(100));
+            //     continue;
+            // }
+            alpha = -90.0f - alpha; // Adjust alpha to match the robot's orientation
+            ESP_LOGI(IMU_TAG, "Alpha: %6f", alpha);
 
             // alpha = (alpha + gyro_data.adj_data.x * dt ) * factor + accel_data.adj_data.y * 9.8f * (1-factor);
-
             if (fabs(alpha) < alpha_threshold) {
                 alpha = 0.0f;
             }
@@ -203,9 +211,9 @@ void app_main(void)
                 correctionDir.vertical = motorSpeed > 0 ? Y_Direction::FORWARD : Y_Direction::BACKWARD;
 
             // ESP_LOGI(ACTION_TAG, "Angle: %6f - Motor speed: %6ld", alpha, motorSpeed);
-            // robot.Drive(correctionDir, motorSpeed);
+            robot.Drive(correctionDir, motorSpeed);
             
-            vTaskDelay(pdMS_TO_TICKS(1000));
+            vTaskDelay(pdMS_TO_TICKS(20));
         }
     }
 }
