@@ -39,9 +39,7 @@ constexpr ledc_mode_t LEDC_SPEED_MODE = LEDC_LOW_SPEED_MODE;
 
 RobotDefinition robot;   
 static const int BASE_SPEED = 392; // Default speed for motors
-static const int CORRECTION_LIMIT = 20; // Limit for correction speed
 static const float deltaAlphaRange = 0.0f;
-static const int turnRange = 300;
 float deltaAlpha = 0.0f;
 float turn = 0.0f;
 
@@ -53,10 +51,10 @@ gpio_num_t sclk_pin = GPIO_NUM_4;
 gpio_num_t cs_pin   = GPIO_NUM_17;
 
 // PID
-PidService pid(900, 0, 0);
+PidService pid(150, 0, 0);
 
 // Constants
-constexpr float alpha_threshold = 0.5f; // Threshold for alpha to reset it to 0
+constexpr float alpha_threshold = 0.25f; // Threshold for alpha to reset it to 0
 
 extern "C" void app_main();
 
@@ -152,15 +150,17 @@ void app_main(void)
         float factor = 0.985f;
         float lastTime = 0.0f;
         float dt;
-        int32_t motorSpeed, prev_motor = 0;
+        float motorSpeed, prev_motor = 0;
+
         float p,i,d;
+        float calculatedPID = 0.0f;
 
         // flattern data
         if (fabs(gyro_data.adj_data.x) < gyro_offset_x) gyro_data.adj_data.x = 0.0f;
         if (fabs(gyro_data.adj_data.y) < gyro_offset_y) gyro_data.adj_data.y = 0.0f;
         if (fabs(gyro_data.adj_data.z) < gyro_offset_z) gyro_data.adj_data.z = 0.0f;
 
-        float initAccelX = accel_data.adj_data.x;
+        // float initAccelX = accel_data.adj_data.x;
         float initAccelY = accel_data.adj_data.y;
         float initAccelZ = accel_data.adj_data.z;
 
@@ -174,21 +174,25 @@ void app_main(void)
         float initial_alpha = alpha;
         ESP_LOGI(IMU_TAG, "Initial alpha: %6f", alpha);
 
-        for(;;)
+        for (;;)
         {
             // get bmi data
             imu.getData(accel_data, gyro_data);
 
             // flattern data
-            if (fabs(gyro_data.adj_data.x) < gyro_offset_x) gyro_data.adj_data.x = 0.0f;
-            if (fabs(gyro_data.adj_data.y) < gyro_offset_y) gyro_data.adj_data.y = 0.0f;
-            if (fabs(gyro_data.adj_data.z) < gyro_offset_z) gyro_data.adj_data.z = 0.0f;
+            if (fabs(gyro_data.adj_data.x) < gyro_offset_x)
+                gyro_data.adj_data.x = 0.0f;
+            if (fabs(gyro_data.adj_data.y) < gyro_offset_y)
+                gyro_data.adj_data.y = 0.0f;
+            if (fabs(gyro_data.adj_data.z) < gyro_offset_z)
+                gyro_data.adj_data.z = 0.0f;
 
-            dt = (gyro_data.adj_data.sensortime - lastTime)/1000.0f;
+            dt = (gyro_data.adj_data.sensortime - lastTime) / 1000.0f;
             lastTime = gyro_data.adj_data.sensortime;
 
-            alpha = (alpha + gyro_data.adj_data.x*dt ) * 
-                    factor + atan2f(accel_data.adj_data.z + initAccelZ, accel_data.adj_data.y + initAccelY) * 180.0f / M_PI * (1 - factor);
+            alpha = (alpha + gyro_data.adj_data.x * dt) *
+                        factor +
+                    atan2f(accel_data.adj_data.z + initAccelZ, accel_data.adj_data.y + initAccelY) * 180.0f / M_PI * (1 - factor);
 
             if ((alpha > (initial_alpha - alpha_threshold)) && (alpha < (initial_alpha + alpha_threshold)))
             {
@@ -197,23 +201,33 @@ void app_main(void)
                 continue;
             }
 
-            float calculatedAlpha = initial_alpha-alpha-deltaAlpha*deltaAlphaRange;
-            motorSpeed = pid.update(calculatedAlpha, dt);
-            pid.getLastPid(p,i,d);
-            Direction correctionDir = { X_Direction::X_CENTER, Y_Direction::Y_CENTER};
+            float calculatedAlpha = initial_alpha - alpha - deltaAlpha * deltaAlphaRange;
+            calculatedPID = pid.update(calculatedAlpha, dt);
+            motorSpeed = calculatedPID;
+            pid.getLastPid(p, i, d);
 
             motorSpeed = prev_motor * 0.1 + motorSpeed * 0.9;
             prev_motor = motorSpeed;
 
+            correctionDir = {X_Direction::X_CENTER, Y_Direction::Y_CENTER};
             if (calculatedAlpha != 0)
                 correctionDir.vertical = calculatedAlpha < 0 ? Y_Direction::FORWARD : Y_Direction::BACKWARD;
 
-            motorSpeed = -motorSpeed + turn * turnRange;
+            motorSpeed = -motorSpeed + turn * BASE_SPEED;
 
-            ESP_LOGI(ACTION_TAG, "Angle: %6f - Motor speed: %6ld", calculatedAlpha, motorSpeed);
-            robot.Drive(correctionDir, motorSpeed);
-            
-            vTaskDelay(pdMS_TO_TICKS(20));
+            int32_t speedForMotor = 0;
+            if (calculatedPID > 1023)
+                speedForMotor = 1023;
+            else if (calculatedPID < -1023)
+                speedForMotor = -1023;
+            else
+                speedForMotor = static_cast<int32_t>(calculatedPID);
+
+
+            ESP_LOGI(ACTION_TAG, "Angle: %6f - Motor speed: %6ld", calculatedAlpha, speedForMotor);
+            robot.Drive(correctionDir, speedForMotor);
+
+            vTaskDelay(pdMS_TO_TICKS(100));
         }
     }
 }
