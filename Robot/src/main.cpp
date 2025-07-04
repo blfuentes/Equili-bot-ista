@@ -156,9 +156,9 @@ void app_main(void)
         float calculatedPID = 0.0f;
 
         // flattern data
-        if (fabs(gyro_data.adj_data.x) < gyro_offset_x) gyro_data.adj_data.x = 0.0f;
-        if (fabs(gyro_data.adj_data.y) < gyro_offset_y) gyro_data.adj_data.y = 0.0f;
-        if (fabs(gyro_data.adj_data.z) < gyro_offset_z) gyro_data.adj_data.z = 0.0f;
+        gyro_data.adj_data.x -= gyro_offset_x;
+        gyro_data.adj_data.y -= gyro_offset_y;
+        gyro_data.adj_data.z -= gyro_offset_z;
 
         // float initAccelX = accel_data.adj_data.x;
         float initAccelY = accel_data.adj_data.y;
@@ -180,12 +180,9 @@ void app_main(void)
             imu.getData(accel_data, gyro_data);
 
             // flattern data
-            if (fabs(gyro_data.adj_data.x) < gyro_offset_x)
-                gyro_data.adj_data.x = 0.0f;
-            if (fabs(gyro_data.adj_data.y) < gyro_offset_y)
-                gyro_data.adj_data.y = 0.0f;
-            if (fabs(gyro_data.adj_data.z) < gyro_offset_z)
-                gyro_data.adj_data.z = 0.0f;
+            gyro_data.adj_data.x -= gyro_offset_x;
+            gyro_data.adj_data.y -= gyro_offset_y;
+            gyro_data.adj_data.z -= gyro_offset_z;
 
             dt = (gyro_data.adj_data.sensortime - lastTime) / 1000.0f;
             lastTime = gyro_data.adj_data.sensortime;
@@ -193,13 +190,6 @@ void app_main(void)
             alpha = (alpha + gyro_data.adj_data.x * dt) *
                         factor +
                     atan2f(accel_data.adj_data.z + initAccelZ, accel_data.adj_data.y + initAccelY) * 180.0f / M_PI * (1 - factor);
-
-            if ((alpha > (initial_alpha - alpha_threshold)) && (alpha < (initial_alpha + alpha_threshold)))
-            {
-                robot.Drive(correctionDir, 0);
-                vTaskDelay(pdMS_TO_TICKS(100));
-                continue;
-            }
 
             float calculatedAlpha = initial_alpha - alpha - deltaAlpha * deltaAlphaRange;
             calculatedPID = pid.update(calculatedAlpha, dt);
@@ -209,7 +199,7 @@ void app_main(void)
             motorSpeed = prev_motor * 0.1 + motorSpeed * 0.9;
             prev_motor = motorSpeed;
 
-            correctionDir = {X_Direction::X_CENTER, Y_Direction::Y_CENTER};
+            correctionDir = { X_Direction::X_CENTER, Y_Direction::Y_CENTER };
             if (calculatedAlpha != 0)
                 correctionDir.vertical = calculatedAlpha < 0 ? Y_Direction::FORWARD : Y_Direction::BACKWARD;
 
