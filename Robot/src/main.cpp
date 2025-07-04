@@ -38,7 +38,7 @@ constexpr gpio_num_t STBY = GPIO_NUM_33;
 constexpr ledc_mode_t LEDC_SPEED_MODE = LEDC_LOW_SPEED_MODE;
 
 RobotDefinition robot;   
-static const int BASE_SPEED = 392; // Default speed for motors
+static const int BASE_SPEED = 375; // Default speed for motors
 static const float deltaAlphaRange = 0.0f;
 float deltaAlpha = 0.0f;
 float turn = 0.0f;
@@ -51,7 +51,7 @@ gpio_num_t sclk_pin = GPIO_NUM_4;
 gpio_num_t cs_pin   = GPIO_NUM_17;
 
 // PID
-PidService pid(100, 0, 0);
+PidService pid(150, 0, 0);
 
 // Constants
 constexpr float alpha_threshold = 0.25f; // Threshold for alpha to reset it to 0
@@ -76,7 +76,7 @@ static void recvcb(const esp_now_recv_info_t * esp_now_info, const uint8_t *data
 
 void app_main(void)
 {
-    vTaskDelay(pdMS_TO_TICKS(500));
+    vTaskDelay(pdMS_TO_TICKS(100));
 
     // Robot parts
     MotorDefinition rightMotor;
@@ -130,7 +130,7 @@ void app_main(void)
         float gyro_offset_x = 0.0f, gyro_offset_y = 0.0f, gyro_offset_z = 0.0f;
 
         // collect data
-        const int num_samples = 100;
+        const int num_samples = 50;
         for (int i = 0; i < num_samples; i++)
         {
             imu.getData(accel_data, gyro_data);
@@ -161,7 +161,7 @@ void app_main(void)
         gyro_data.adj_data.z -= gyro_offset_z;
 
         // float initAccelX = accel_data.adj_data.x;
-        float initAccelY = 0.088382;//0.136235; //accel_data.adj_data.y;
+        float initAccelY = 0.124516;//0.136235; //accel_data.adj_data.y;
         float initAccelZ = 0.002960;//0.995636 - 1; //accel_data.adj_data.z;
 
         ESP_LOGI(IMU_TAG, "Initial gyro data: x: %f y: %f z: %f", gyro_data.adj_data.x, gyro_data.adj_data.y, gyro_data.adj_data.z);
@@ -171,7 +171,7 @@ void app_main(void)
         lastTime = gyro_data.adj_data.sensortime;
 
         alpha = atan2f(accel_data.adj_data.z + initAccelZ, accel_data.adj_data.y + initAccelY) * 180.0f / M_PI;
-        float initial_alpha = -92.146935; //-87.280174; //alpha;
+        float initial_alpha = -88.7;//-88.428268;//-87.280174;//-92.146935; //-87.280174; //alpha;
         ESP_LOGI(IMU_TAG, "Initial alpha: %6f", alpha);
 
         for (;;)
@@ -206,6 +206,16 @@ void app_main(void)
             motorSpeed = -motorSpeed + turn * BASE_SPEED;
 
             int32_t speedForMotor = 0;
+
+            if (calculatedPID > 0)
+            {
+                calculatedPID += BASE_SPEED;
+            }
+            else if (calculatedPID < 0)
+            {
+                calculatedPID -= BASE_SPEED;
+            }
+
             if (calculatedPID > 1023)
                 speedForMotor = 1023;
             else if (calculatedPID < -1023)
@@ -213,11 +223,10 @@ void app_main(void)
             else
                 speedForMotor = static_cast<int32_t>(calculatedPID);
 
-
             ESP_LOGI(ACTION_TAG, "Angle: %6f - Motor speed: %6ld", alphaError, speedForMotor);
             robot.Drive(correctionDir, speedForMotor);
 
-            vTaskDelay(pdMS_TO_TICKS(100));
+            vTaskDelay(pdMS_TO_TICKS(20));
         }
     }
 }
