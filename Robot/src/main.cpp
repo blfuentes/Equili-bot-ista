@@ -38,7 +38,7 @@ constexpr gpio_num_t STBY = GPIO_NUM_33;
 constexpr ledc_mode_t LEDC_SPEED_MODE = LEDC_LOW_SPEED_MODE;
 
 RobotDefinition robot;   
-static const int BASE_SPEED = 375; // Default speed for motors
+static const int BASE_SPEED = 350; // Default speed for motors
 static const float deltaAlphaRange = 0.0f;
 float deltaAlpha = 0.0f;
 float turn = 0.0f;
@@ -52,9 +52,6 @@ gpio_num_t cs_pin   = GPIO_NUM_17;
 
 // PID
 PidService pid(150, 0, 0);
-
-// Constants
-constexpr float alpha_threshold = 0.25f; // Threshold for alpha to reset it to 0
 
 extern "C" void app_main();
 
@@ -161,8 +158,8 @@ void app_main(void)
         gyro_data.adj_data.z -= gyro_offset_z;
 
         // float initAccelX = accel_data.adj_data.x;
-        float initAccelY = 0.124516;//0.136235; //accel_data.adj_data.y;
-        float initAccelZ = 0.002960;//0.995636 - 1; //accel_data.adj_data.z;
+        float initAccelY = 0.124516;
+        float initAccelZ = 0.002960;
 
         ESP_LOGI(IMU_TAG, "Initial gyro data: x: %f y: %f z: %f", gyro_data.adj_data.x, gyro_data.adj_data.y, gyro_data.adj_data.z);
         ESP_LOGI(IMU_TAG, "Initial accel data: x: %f y: %f z: %f", accel_data.adj_data.x, accel_data.adj_data.y, accel_data.adj_data.z);
@@ -171,7 +168,7 @@ void app_main(void)
         lastTime = gyro_data.adj_data.sensortime;
 
         alpha = atan2f(accel_data.adj_data.z + initAccelZ, accel_data.adj_data.y + initAccelY) * 180.0f / M_PI;
-        float initial_alpha = -88.7;//-88.428268;//-87.280174;//-92.146935; //-87.280174; //alpha;
+        float initial_alpha = -87.0;
         ESP_LOGI(IMU_TAG, "Initial alpha: %6f", alpha);
 
         for (;;)
