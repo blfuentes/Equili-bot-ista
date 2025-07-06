@@ -38,7 +38,7 @@ constexpr gpio_num_t STBY = GPIO_NUM_33;
 constexpr ledc_mode_t LEDC_SPEED_MODE = LEDC_LOW_SPEED_MODE;
 
 RobotDefinition robot;   
-static const int BASE_SPEED = 350; // Default speed for motors
+static const int BASE_SPEED = 380; // Default speed for motors
 static const float deltaAlphaRange = 0.0f;
 float deltaAlpha = 0.0f;
 float turn = 0.0f;
@@ -51,7 +51,7 @@ gpio_num_t sclk_pin = GPIO_NUM_4;
 gpio_num_t cs_pin   = GPIO_NUM_17;
 
 // PID
-PidService pid(150, 0, 0);
+PidService pid(50, 0, 0);
 
 extern "C" void app_main();
 
@@ -150,7 +150,6 @@ void app_main(void)
         float motorSpeed, prev_motor = 0;
 
         float p,i,d;
-        float calculatedPID = 0.0f;
 
         // flattern data
         gyro_data.adj_data.x -= gyro_offset_x;
@@ -158,8 +157,8 @@ void app_main(void)
         gyro_data.adj_data.z -= gyro_offset_z;
 
         // float initAccelX = accel_data.adj_data.x;
-        float initAccelY = 0.124516;
-        float initAccelZ = 0.002960;
+        float initAccelY = 0 - 0.000488;//0.124516;
+        float initAccelZ = 1 - 0.986358;//0.002960;
 
         ESP_LOGI(IMU_TAG, "Initial gyro data: x: %f y: %f z: %f", gyro_data.adj_data.x, gyro_data.adj_data.y, gyro_data.adj_data.z);
         ESP_LOGI(IMU_TAG, "Initial accel data: x: %f y: %f z: %f", accel_data.adj_data.x, accel_data.adj_data.y, accel_data.adj_data.z);
@@ -168,7 +167,7 @@ void app_main(void)
         lastTime = gyro_data.adj_data.sensortime;
 
         alpha = atan2f(accel_data.adj_data.z + initAccelZ, accel_data.adj_data.y + initAccelY) * 180.0f / M_PI;
-        float initial_alpha = -87.0;
+        float initial_alpha = 90.0; //-88;//-88.7f;
         ESP_LOGI(IMU_TAG, "Initial alpha: %6f", alpha);
 
         for (;;)
@@ -189,8 +188,7 @@ void app_main(void)
                     atan2f(accel_data.adj_data.z + initAccelZ, accel_data.adj_data.y + initAccelY) * 180.0f / M_PI * (1 - factor);
 
             float alphaError = initial_alpha - alpha - deltaAlpha * deltaAlphaRange;
-            calculatedPID = pid.update(alphaError, dt);
-            motorSpeed = calculatedPID;
+            motorSpeed = pid.update(alphaError, dt);
             pid.getLastPid(p, i, d);
 
             motorSpeed = prev_motor * 0.1 + motorSpeed * 0.9;
@@ -198,27 +196,27 @@ void app_main(void)
 
             correctionDir = { X_Direction::X_CENTER, Y_Direction::Y_CENTER };
             if (alphaError != 0)
-                correctionDir.vertical = alphaError < 0 ? Y_Direction::FORWARD : Y_Direction::BACKWARD;
+                correctionDir.vertical = alphaError > 0 ? Y_Direction::FORWARD : Y_Direction::BACKWARD;
 
             motorSpeed = -motorSpeed + turn * BASE_SPEED;
 
             int32_t speedForMotor = 0;
 
-            if (calculatedPID > 0)
+            if (motorSpeed > 0)
             {
-                calculatedPID += BASE_SPEED;
+                motorSpeed += BASE_SPEED;
             }
-            else if (calculatedPID < 0)
+            else if (motorSpeed < 0)
             {
-                calculatedPID -= BASE_SPEED;
+                motorSpeed -= BASE_SPEED;
             }
 
-            if (calculatedPID > 1023)
+            if (motorSpeed > 1023)
                 speedForMotor = 1023;
-            else if (calculatedPID < -1023)
+            else if (motorSpeed < -1023)
                 speedForMotor = -1023;
             else
-                speedForMotor = static_cast<int32_t>(calculatedPID);
+                speedForMotor = static_cast<int32_t>(motorSpeed);
 
             ESP_LOGI(ACTION_TAG, "Angle: %6f - Motor speed: %6ld", alphaError, speedForMotor);
             robot.Drive(correctionDir, speedForMotor);

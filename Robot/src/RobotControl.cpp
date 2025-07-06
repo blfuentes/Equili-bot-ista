@@ -93,3 +93,9 @@ void RobotDefinition::Drive(Direction dir, int speed)
         }
     }
 }
+
+void RobotDefinition::Stop()
+{
+    this->rightMotor.Stop();
+    this->leftMotor.Stop();
+}
