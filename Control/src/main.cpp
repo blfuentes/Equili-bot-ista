@@ -61,8 +61,8 @@ char display_buffer[16] = {0};  // Single reusable buffer
 
 // PID defaults
 constexpr float DEFAULT_P = 250;
-constexpr float DEFAULT_I = 0;
-constexpr float DEFAULT_D = 0;
+constexpr float DEFAULT_I = 125;
+constexpr float DEFAULT_D = 0.125;
 
 // JOYSTICK
 constexpr adc_channel_t JOYSTICK_CHANNEL_X = ADC_CHANNEL_0; // GPIO00
@@ -95,7 +95,7 @@ void update_display() {
 
     // Line 2: PID Values
     memset(display_buffer, 0, sizeof(display_buffer));
-    snprintf(display_buffer, sizeof(display_buffer), "%3d %3d %4.1f", current_status.current_P, current_status.current_I, current_status.current_D);
+    snprintf(display_buffer, sizeof(display_buffer), "%3.0f %3.0f %.3f", current_status.current_P, current_status.current_I, current_status.current_D);
     ssd1306_display_text(&oled_dev, 2, display_buffer, 16, false);
 
     // Line 3: Joystick Values
@@ -107,7 +107,7 @@ void update_pid(int orientation)
     switch(current_status.current_param)
     {
         case ParamType::P:
-            current_status.current_P += orientation == 1 ? 10 : -10;
+            current_status.current_P += orientation == 1 ? 5 : -5;
             if (current_status.current_P < 0) current_status.current_P = 0;
             break;
         case ParamType::I:
@@ -115,7 +115,7 @@ void update_pid(int orientation)
             if (current_status.current_I < 0) current_status.current_I = 0;
             break;
         case ParamType::D:
-            current_status.current_D += orientation == 1 ? .1 : -.1;
+            current_status.current_D += orientation == 1 ? .05 : -.05;
             if (current_status.current_D < 0) current_status.current_D = 0;
             break;
     }
@@ -196,7 +196,7 @@ void app_main(void)
     }
     median_voltage /= 50;
     ESP_LOGI(ADC_TAG, "Median Value: %d", median_voltage);
-    current_status = ControlStatus(DEFAULT_P, DEFAULT_I, DEFAULT_D, ModeType::STANDING, ParamType::P, LockType::UNLOCKED);
+    current_status = ControlStatus(DEFAULT_P, DEFAULT_I, DEFAULT_D, ModeType::STANDING, ParamType::P, LockType::LOCKED);
     current_status.SetRaw(median_voltage);
     if (do_calibration1_control) {
         ESP_ERROR_CHECK(adc_cali_raw_to_voltage(adc1_cali_control_handle, current_status.adc_raw, &median_voltage));
@@ -321,7 +321,7 @@ void app_main(void)
                 current_status.ModeToString(), current_status.ParamToString(), current_status.LockToString());
             ESP_LOGI(REPORT_TAG, "ADC%d Channel[%d] Raw Data: %d", ADC_UNIT_1 + 1, POT_ADC_CHANNEL, current_status.adc_raw);
             ESP_LOGI(REPORT_TAG, "ADC%d Channel[%d] Cali Voltage: %d mV", ADC_UNIT_1 + 1, POT_ADC_CHANNEL, current_status.voltage);
-            ESP_LOGI(REPORT_TAG, "P: %d I: %d D: %.1f", current_status.current_P, current_status.current_I, current_status.current_D);
+            ESP_LOGI(REPORT_TAG, "P: %3.0f I: %3.0f D: %.3f", current_status.current_P, current_status.current_I, current_status.current_D);
             ESP_LOGI(REPORT_TAG, "X: %d Y: %d", current_status.current_X, current_status.current_Y);
             
             update_display();

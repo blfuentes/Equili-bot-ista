@@ -23,6 +23,7 @@ static const char *IMU_TAG = "imu_log";
 static const char *ACTION_TAG = "action_log";
 static const char *LIBNOW_TAG = "libnow_log";
 static const char *MESSAGE_TAG = "message_log";
+static const char *CONTROL_TAG = "control_log";
 
 // motor pins
 constexpr gpio_num_t MOTOR_A_IN_1 = GPIO_NUM_18;
@@ -39,7 +40,8 @@ constexpr ledc_mode_t LEDC_SPEED_MODE = LEDC_LOW_SPEED_MODE;
 
 RobotDefinition robot;  
 static const int BASE_SPEED = 400; // Default speed for motors
-static const float deltaAlphaRange = 0.0f;
+static const float deltaAlphaRange = 5.0f;
+static const float turnRange = 400.0f;
 float deltaAlpha = 0.0f;
 float turn = 0.0f;
 
@@ -57,8 +59,8 @@ extern "C" void app_main();
 
 void doWhenMove(message_control_status msg)
 {
-    // deltaAlpha = (msg.x-2270)/4095.0f;
-    // turn = (msg.y-2317)/4095.0f;
+    deltaAlpha = (msg.move_y * 2)/4095.0f;
+    turn = (msg.move_x * 2)/4095.0f;
 }
 
 static void recvcb(const esp_now_recv_info_t * esp_now_info, const uint8_t *data, int data_len)
@@ -66,8 +68,8 @@ static void recvcb(const esp_now_recv_info_t * esp_now_info, const uint8_t *data
     // ESP_LOGI(MESSAGE_TAG, "Message received");
     message_control_status msg = *(message_control_status*)&data[0];
     doWhenMove(msg);
-    ESP_LOGI(MESSAGE_TAG, "Message received. Mode: %d, Move X: %d, Move Y: %d, Param P: %f, Param I: %f, Param D: %.1f", 
-        msg.mode, msg.move_x, msg.move_y, msg.param_p, msg.param_i, msg.param_d);
+    // ESP_LOGI(MESSAGE_TAG, "Message received. Mode: %d, Move X: %d, Move Y: %d, Param P: %3.0f, Param I: %3.0f, Param D: %.3f", 
+    //     msg.mode, msg.move_x, msg.move_y, msg.param_p, msg.param_i, msg.param_d);
 
 }
 
@@ -200,7 +202,16 @@ void app_main(void)
                 correctionDir.vertical = alphaError > 0 ? Y_Direction::FORWARD : Y_Direction::BACKWARD;
             }
 
-            motorSpeed = -motorSpeed + turn * BASE_SPEED;
+            ESP_LOGI(CONTROL_TAG, "Turn: %6f - Delta Alpha: %6f", turn, deltaAlpha);
+            if (turn > 0.0f){
+                correctionDir.horizontal = X_Direction::RIGHT;
+            } else if (turn < 0.0f){
+                correctionDir.horizontal = X_Direction::LEFT;
+            } else {
+                correctionDir.horizontal = X_Direction::X_CENTER;
+            }
+
+            motorSpeed = -motorSpeed + turn * turnRange;
 
             int32_t speedForMotor = 0;
             if (motorSpeed > 1023)
@@ -211,7 +222,7 @@ void app_main(void)
                 speedForMotor = static_cast<int32_t>(motorSpeed);
 
             if (fabs(speedForMotor) < BASE_SPEED){
-                ESP_LOGI(MOTOR_TAG, "Speed too low: %6ld", speedForMotor);
+                // ESP_LOGI(MOTOR_TAG, "Speed too low: %6ld", speedForMotor);
                 robot.Stop(); // Stop the robot if speed is too low
                 vTaskDelay(pdMS_TO_TICKS(20));
                 continue; // Skip if speed is too low
