@@ -51,7 +51,7 @@ gpio_num_t sclk_pin = GPIO_NUM_4;
 gpio_num_t cs_pin   = GPIO_NUM_17;
 
 // PID
-PidService pid(250, 0, 0);
+PidService pid(250, 150, 0.125);
 
 extern "C" void app_main();
 
@@ -211,14 +211,13 @@ void app_main(void)
                 speedForMotor = static_cast<int32_t>(motorSpeed);
 
             if (fabs(speedForMotor) < BASE_SPEED){
-                ESP_LOGI(IMU_TAG, "Speed too low: %6ld", speedForMotor);
+                ESP_LOGI(MOTOR_TAG, "Speed too low: %6ld", speedForMotor);
                 robot.Stop(); // Stop the robot if speed is too low
                 vTaskDelay(pdMS_TO_TICKS(20));
                 continue; // Skip if speed is too low
             }
 
-            ESP_LOGI(IMU_TAG, "Expected vertical: %6f - Alpha: %6f - Error: %6f - Speed: %6ld", expected_vertical, alpha, alphaError, speedForMotor);
-            // ESP_LOGI(ACTION_TAG, "ExpectedVertical: %6f - Angle: %6f - Direction: %s Motor speed: %6ld", expected_vertical, alphaError, robot.Y_DirectionToString(correctionDir.vertical), speedForMotor);
+            ESP_LOGI(ACTION_TAG, "Expected vertical: %6f - Alpha: %6f - Error: %6f - Direction: %s - Speed: %6ld", expected_vertical, alpha, alphaError, robot.Y_DirectionToString(correctionDir.vertical), speedForMotor);
             robot.Drive(correctionDir, speedForMotor);
 
             vTaskDelay(pdMS_TO_TICKS(20));
