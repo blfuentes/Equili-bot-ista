@@ -37,8 +37,8 @@ constexpr gpio_num_t STBY = GPIO_NUM_33;
 
 constexpr ledc_mode_t LEDC_SPEED_MODE = LEDC_LOW_SPEED_MODE;
 
-RobotDefinition robot;   
-static const int BASE_SPEED = 380; // Default speed for motors
+RobotDefinition robot;  
+static const int BASE_SPEED = 400; // Default speed for motors
 static const float deltaAlphaRange = 0.0f;
 float deltaAlpha = 0.0f;
 float turn = 0.0f;
@@ -51,7 +51,7 @@ gpio_num_t sclk_pin = GPIO_NUM_4;
 gpio_num_t cs_pin   = GPIO_NUM_17;
 
 // PID
-PidService pid(50, 0, 0);
+PidService pid(250, 0, 0);
 
 extern "C" void app_main();
 
@@ -97,7 +97,7 @@ void app_main(void)
     ESP_LOGI(MOTOR_TAG, "Left motor configured on GPIO %d and %d", MOTOR_B_IN_1, MOTOR_B_IN_2);
     stby = PinGPIODefinition(STBY, GPIO_MODE_OUTPUT, GPIO_PULLDOWN_DISABLE);
 
-    robot = RobotDefinition(leftMotor, rightMotor, stby, 0, 0);
+    robot = RobotDefinition(leftMotor, rightMotor, stby, 0, 15);
     robot.Configure();
 
     ESP_LOGI(MOTOR_TAG, "Motors configured");
@@ -157,17 +157,18 @@ void app_main(void)
         gyro_data.adj_data.z -= gyro_offset_z;
 
         // float initAccelX = accel_data.adj_data.x;
-        float initAccelY = 0 - 0.000488;//0.124516;
-        float initAccelZ = 1 - 0.986358;//0.002960;
+        float initAccelY = 0 - 0.010254;// axis Y has to be zeroed
+        float initAccelZ = 1 - 0.980010;// axis Z has to be 1.0
 
         ESP_LOGI(IMU_TAG, "Initial gyro data: x: %f y: %f z: %f", gyro_data.adj_data.x, gyro_data.adj_data.y, gyro_data.adj_data.z);
         ESP_LOGI(IMU_TAG, "Initial accel data: x: %f y: %f z: %f", accel_data.adj_data.x, accel_data.adj_data.y, accel_data.adj_data.z);
         
-        dt = (gyro_data.adj_data.sensortime - lastTime) / 1000.0f;
+        // first lecture
+        imu.getData(accel_data, gyro_data);
         lastTime = gyro_data.adj_data.sensortime;
+        alpha = atan2f(accel_data.adj_data.z + initAccelZ, accel_data.adj_data.y + initAccelY) * 180.0f / M_PI;        
 
-        alpha = atan2f(accel_data.adj_data.z + initAccelZ, accel_data.adj_data.y + initAccelY) * 180.0f / M_PI;
-        float initial_alpha = 90.0; //-88;//-88.7f;
+        float expected_vertical = 90.5; //alpha;
         ESP_LOGI(IMU_TAG, "Initial alpha: %6f", alpha);
 
         for (;;)
@@ -183,11 +184,11 @@ void app_main(void)
             dt = (gyro_data.adj_data.sensortime - lastTime) / 1000.0f;
             lastTime = gyro_data.adj_data.sensortime;
 
-            alpha = (alpha + gyro_data.adj_data.x * dt) *
-                        factor +
-                    atan2f(accel_data.adj_data.z + initAccelZ, accel_data.adj_data.y + initAccelY) * 180.0f / M_PI * (1 - factor);
+            float firstPart = alpha - gyro_data.adj_data.x * dt;
+            float secondPart = atan2f(accel_data.adj_data.z + initAccelZ, accel_data.adj_data.y + initAccelY) * 180.0f / M_PI;
+            alpha = firstPart * factor + secondPart * (1 - factor);
 
-            float alphaError = initial_alpha - alpha - deltaAlpha * deltaAlphaRange;
+            float alphaError = expected_vertical - alpha - deltaAlpha * deltaAlphaRange;
             motorSpeed = pid.update(alphaError, dt);
             pid.getLastPid(p, i, d);
 
@@ -195,22 +196,13 @@ void app_main(void)
             prev_motor = motorSpeed;
 
             correctionDir = { X_Direction::X_CENTER, Y_Direction::Y_CENTER };
-            if (alphaError != 0)
+            if (alphaError != 0){
                 correctionDir.vertical = alphaError > 0 ? Y_Direction::FORWARD : Y_Direction::BACKWARD;
+            }
 
             motorSpeed = -motorSpeed + turn * BASE_SPEED;
 
             int32_t speedForMotor = 0;
-
-            if (motorSpeed > 0)
-            {
-                motorSpeed += BASE_SPEED;
-            }
-            else if (motorSpeed < 0)
-            {
-                motorSpeed -= BASE_SPEED;
-            }
-
             if (motorSpeed > 1023)
                 speedForMotor = 1023;
             else if (motorSpeed < -1023)
@@ -218,7 +210,15 @@ void app_main(void)
             else
                 speedForMotor = static_cast<int32_t>(motorSpeed);
 
-            ESP_LOGI(ACTION_TAG, "Angle: %6f - Motor speed: %6ld", alphaError, speedForMotor);
+            if (fabs(speedForMotor) < BASE_SPEED){
+                ESP_LOGI(IMU_TAG, "Speed too low: %6ld", speedForMotor);
+                robot.Stop(); // Stop the robot if speed is too low
+                vTaskDelay(pdMS_TO_TICKS(20));
+                continue; // Skip if speed is too low
+            }
+
+            ESP_LOGI(IMU_TAG, "Expected vertical: %6f - Alpha: %6f - Error: %6f - Speed: %6ld", expected_vertical, alpha, alphaError, speedForMotor);
+            // ESP_LOGI(ACTION_TAG, "ExpectedVertical: %6f - Angle: %6f - Direction: %s Motor speed: %6ld", expected_vertical, alphaError, robot.Y_DirectionToString(correctionDir.vertical), speedForMotor);
             robot.Drive(correctionDir, speedForMotor);
 
             vTaskDelay(pdMS_TO_TICKS(20));

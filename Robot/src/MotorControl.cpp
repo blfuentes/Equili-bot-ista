@@ -74,7 +74,11 @@ void MotorDefinition::Drive(int speed, int correction)
     }
 
     // Set the PWM duty cycle (absolute value of speed)
-    ledc_set_duty(this->speedMode, this->channel, abs(speed) + correction);
+    uint32_t newSpeed = abs(speed) + correction; // Ensure speed is positive
+    if (newSpeed > 1023) { 
+        newSpeed = 1023; // Limit speed to maximum duty cycle
+    }
+    ledc_set_duty(this->speedMode, this->channel, newSpeed);
     ledc_update_duty(this->speedMode, this->channel);
 }
 
