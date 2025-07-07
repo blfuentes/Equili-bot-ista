@@ -4,6 +4,7 @@
 #include <driver/ledc.h>
 #include <esp_log.h>
 #include <esp_now.h>
+#include <esp_timer.h>
 
 #include "libnow.h"
 
@@ -11,7 +12,7 @@
 #include "bmi160_wrapper.h"
 #include "PIDService.h"
 #include "RobotControl.h"
-#include <esp_timer.h>
+#include "servo.h"
 
 // Libnow
 #define MAC_ROBOT { 0xd8, 0xbc, 0x38, 0xf9, 0x3b, 0x4c }
@@ -24,6 +25,7 @@ static const char *ACTION_TAG = "action_log";
 static const char *LIBNOW_TAG = "libnow_log";
 static const char *MESSAGE_TAG = "message_log";
 static const char *CONTROL_TAG = "control_log";
+static const char *SERVO_TAG = "servo_log";
 
 // motor pins
 constexpr gpio_num_t MOTOR_A_IN_1 = GPIO_NUM_18;
@@ -51,16 +53,27 @@ float initAccelYCorrection = 0.020020f; // Correction for initial acceleration o
 float initAccelZCorrection = 0.982452f; // Correction for initial acceleration on Z axis
 float expected_vertical = 89.8;//90.7; //alpha;
 
-// bmi pins
+// bmi
 Bmi160<Bmi160SpiConfig> imu;
 gpio_num_t mosi_pin = GPIO_NUM_16;
 gpio_num_t miso_pin = GPIO_NUM_21;
 gpio_num_t sclk_pin = GPIO_NUM_4;
 gpio_num_t cs_pin   = GPIO_NUM_17;
 
+// Servo
+gpio_num_t servo_pin = GPIO_NUM_15;
+
+
 // PID
+constexpr float PID_KP = 250.0f; // Proportional gain
+constexpr float PID_KI = 150.0f; // Integral gain
+constexpr float PID_KD = 0.125f; // Derivative gain
+
 // PidService pid(250, 150, 0.125);
-PidService pid(275, 15, 0.0625);
+PidService pid(PID_KP, PID_KI, PID_KD);
+
+// Status
+ModeTypeTranslation current_mode = ModeTypeTranslation::MODE_STANDING;
 
 extern "C" void app_main();
 
@@ -68,6 +81,8 @@ void doWhenMove(message_control_status msg)
 {
     deltaAlpha = (msg.move_y * 2)/4095.0f;
     turn = (msg.move_x * 2)/4095.0f;
+
+    current_mode = static_cast<ModeTypeTranslation>(msg.mode);
 }
 
 static void recvcb(const esp_now_recv_info_t * esp_now_info, const uint8_t *data, int data_len)
@@ -88,6 +103,9 @@ void app_main(void)
     MotorDefinition rightMotor;
     MotorDefinition leftMotor;
     PinGPIODefinition stby;
+    Servo servo;
+
+
 
     Direction correctionDir = { X_Direction::X_CENTER, Y_Direction::Y_CENTER};
 
@@ -111,6 +129,13 @@ void app_main(void)
 
     ESP_LOGI(MOTOR_TAG, "Motors configured");
     ESP_LOGI(MAIN_TAG, "GPIOs configured");
+
+    // Initialize servo
+    ESP_LOGI(SERVO_TAG, "Initializing servo...");
+    servo.initHw(servo_pin); // GPIO 25 for servo control
+    servo.calibrate(409, 2048); // Calibrate servo with min and max duty cycle
+    servo.setPos(90); // Set servo to neutral position (90 degrees)
+    ESP_LOGI(SERVO_TAG, "Servo initialized");
 
     // Configuring bmi
     ESP_LOGI(IMU_TAG, "Configuring BMI160 IMU...");
@@ -208,6 +233,9 @@ void app_main(void)
                 correctionDir.vertical = alphaError > 0 ? Y_Direction::FORWARD : Y_Direction::BACKWARD;
             }
 
+            // Apply message control data
+            servo.setPos(current_mode == ModeTypeTranslation::MODE_WAR ? 0 : 90); // Set servo position based on mode
+
             // ESP_LOGI(CONTROL_TAG, "Turn: %6f - Delta Alpha: %6f", turn, deltaAlpha);
             // if (turn > 0.0f){
             //     correctionDir.horizontal = X_Direction::RIGHT;
@@ -228,14 +256,14 @@ void app_main(void)
                 speedForMotor = static_cast<int32_t>(motorSpeed);
 
             if (fabs(speedForMotor) < BASE_SPEED){
-                ESP_LOGI(MOTOR_TAG, "Speed too low: %6ld at angle %6f", speedForMotor, alpha);
+                // ESP_LOGI(MOTOR_TAG, "Speed too low: %6ld at angle %6f", speedForMotor, alpha);
                 robot.Stop(); // Stop the robot if speed is too low
                 vTaskDelay(pdMS_TO_TICKS(20));
                 continue; // Skip if speed is too low
             }
 
-            ESP_LOGI(ACTION_TAG, "Expected vertical: %6f - Alpha: %6f - Error: %6f - Direction: %s - Speed: %6ld", expected_vertical, alpha, alphaError, robot.Y_DirectionToString(correctionDir.vertical), speedForMotor);
-            robot.Drive(correctionDir, speedForMotor);
+            // ESP_LOGI(ACTION_TAG, "Expected vertical: %6f - Alpha: %6f - Error: %6f - Direction: %s - Speed: %6ld", expected_vertical, alpha, alphaError, robot.Y_DirectionToString(correctionDir.vertical), speedForMotor);
+            // robot.Drive(correctionDir, speedForMotor);
 
             vTaskDelay(pdMS_TO_TICKS(20));
         }

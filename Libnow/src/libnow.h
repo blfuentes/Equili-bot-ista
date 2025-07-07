@@ -17,6 +17,11 @@ typedef enum{
     DST_MANDO
 } LibNowDst;
 
+typedef enum {
+    MODE_STANDING = 0,
+    MODE_WAR = 1
+} ModeTypeTranslation;
+
 void libnow_init();
 
 void libnow_addPeer(LibNowDst dst);
