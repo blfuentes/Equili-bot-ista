@@ -4,8 +4,8 @@ constexpr std::array<const char*, 2> ModeStrings = { "Footing", "Fight" };
 constexpr std::array<const char*, 3> ParamStrings = { "P", "I", "D" };
 constexpr std::array<const char*, 2> LockStrings = { "Locked", "Unlocked" };
 
-constexpr int JoystickMovementThreshold = 30;
-constexpr int VoltageChangeThreshold = 30;
+constexpr int JoystickMovementThreshold = 60;
+constexpr int VoltageChangeThreshold = 60;
 
 ControlStatus::ControlStatus(){};
 

@@ -61,8 +61,8 @@ gpio_num_t sclk_pin = GPIO_NUM_4;
 gpio_num_t cs_pin   = GPIO_NUM_17;
 
 // Servo
+Servo servo;
 gpio_num_t servo_pin = GPIO_NUM_15;
-
 
 // PID
 constexpr float PID_KP = 250.0f; // Proportional gain
@@ -92,7 +92,23 @@ static void recvcb(const esp_now_recv_info_t * esp_now_info, const uint8_t *data
     doWhenMove(msg);
     // ESP_LOGI(MESSAGE_TAG, "Message received. Mode: %d, Move X: %d, Move Y: %d, Param P: %3.0f, Param I: %3.0f, Param D: %.3f", 
     //     msg.mode, msg.move_x, msg.move_y, msg.param_p, msg.param_i, msg.param_d);
+}
 
+void applyMode()
+{
+    switch (current_mode)
+    {
+        case ModeTypeTranslation::MODE_STANDING:
+            // Apply standing mode settings
+            servo.setPos(90);
+            break;
+        case ModeTypeTranslation::MODE_WAR:
+            // Apply war mode settings
+            servo.setPos(0);
+            break;
+        default:
+            break;
+    }
 }
 
 void app_main(void)
@@ -103,9 +119,6 @@ void app_main(void)
     MotorDefinition rightMotor;
     MotorDefinition leftMotor;
     PinGPIODefinition stby;
-    Servo servo;
-
-
 
     Direction correctionDir = { X_Direction::X_CENTER, Y_Direction::Y_CENTER};
 
@@ -134,7 +147,7 @@ void app_main(void)
     ESP_LOGI(SERVO_TAG, "Initializing servo...");
     servo.initHw(servo_pin); // GPIO 25 for servo control
     servo.calibrate(409, 2048); // Calibrate servo with min and max duty cycle
-    servo.setPos(90); // Set servo to neutral position (90 degrees)
+    applyMode(); // Apply initial mode settings
     ESP_LOGI(SERVO_TAG, "Servo initialized");
 
     // Configuring bmi
@@ -234,16 +247,16 @@ void app_main(void)
             }
 
             // Apply message control data
-            servo.setPos(current_mode == ModeTypeTranslation::MODE_WAR ? 0 : 90); // Set servo position based on mode
+            applyMode();
 
             // ESP_LOGI(CONTROL_TAG, "Turn: %6f - Delta Alpha: %6f", turn, deltaAlpha);
-            // if (turn > 0.0f){
-            //     correctionDir.horizontal = X_Direction::RIGHT;
-            // } else if (turn < 0.0f){
-            //     correctionDir.horizontal = X_Direction::LEFT;
-            // } else {
-            //     correctionDir.horizontal = X_Direction::X_CENTER;
-            // }
+            if (turn > 0.0f){
+                correctionDir.horizontal = X_Direction::RIGHT;
+            } else if (turn < 0.0f){
+                correctionDir.horizontal = X_Direction::LEFT;
+            } else {
+                correctionDir.horizontal = X_Direction::X_CENTER;
+            }
 
             motorSpeed = -motorSpeed + turn * turnRange;
 
@@ -262,8 +275,8 @@ void app_main(void)
                 continue; // Skip if speed is too low
             }
 
-            // ESP_LOGI(ACTION_TAG, "Expected vertical: %6f - Alpha: %6f - Error: %6f - Direction: %s - Speed: %6ld", expected_vertical, alpha, alphaError, robot.Y_DirectionToString(correctionDir.vertical), speedForMotor);
-            // robot.Drive(correctionDir, speedForMotor);
+            ESP_LOGI(ACTION_TAG, "Expected vertical: %6f - Alpha: %6f - Error: %6f - Direction: %s - Speed: %6ld", expected_vertical, alpha, alphaError, robot.Y_DirectionToString(correctionDir.vertical), speedForMotor);
+            robot.Drive(correctionDir, speedForMotor);
 
             vTaskDelay(pdMS_TO_TICKS(20));
         }
