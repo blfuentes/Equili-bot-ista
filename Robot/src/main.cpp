@@ -39,11 +39,17 @@ constexpr gpio_num_t STBY = GPIO_NUM_33;
 constexpr ledc_mode_t LEDC_SPEED_MODE = LEDC_LOW_SPEED_MODE;
 
 RobotDefinition robot;  
-static const int BASE_SPEED = 400; // Default speed for motors
+static const int LEFT_MOTOR_CORRECTION = 20; // Correction for left motor
+static const int RIGHT_MOTOR_CORRECTION = 0; // Correction for right motor
+static const int BASE_SPEED = 350; // Default speed for motors
 static const float deltaAlphaRange = 5.0f;
 static const float turnRange = 400.0f;
 float deltaAlpha = 0.0f;
 float turn = 0.0f;
+
+float initAccelYCorrection = 0.020020f; // Correction for initial acceleration on Y axis
+float initAccelZCorrection = 0.982452f; // Correction for initial acceleration on Z axis
+float expected_vertical = 89.8;//90.7; //alpha;
 
 // bmi pins
 Bmi160<Bmi160SpiConfig> imu;
@@ -53,7 +59,8 @@ gpio_num_t sclk_pin = GPIO_NUM_4;
 gpio_num_t cs_pin   = GPIO_NUM_17;
 
 // PID
-PidService pid(250, 150, 0.125);
+// PidService pid(250, 150, 0.125);
+PidService pid(275, 15, 0.0625);
 
 extern "C" void app_main();
 
@@ -99,7 +106,7 @@ void app_main(void)
     ESP_LOGI(MOTOR_TAG, "Left motor configured on GPIO %d and %d", MOTOR_B_IN_1, MOTOR_B_IN_2);
     stby = PinGPIODefinition(STBY, GPIO_MODE_OUTPUT, GPIO_PULLDOWN_DISABLE);
 
-    robot = RobotDefinition(leftMotor, rightMotor, stby, 0, 15);
+    robot = RobotDefinition(leftMotor, rightMotor, stby, LEFT_MOTOR_CORRECTION, RIGHT_MOTOR_CORRECTION);
     robot.Configure();
 
     ESP_LOGI(MOTOR_TAG, "Motors configured");
@@ -159,8 +166,8 @@ void app_main(void)
         gyro_data.adj_data.z -= gyro_offset_z;
 
         // float initAccelX = accel_data.adj_data.x;
-        float initAccelY = 0 - 0.010254;// axis Y has to be zeroed
-        float initAccelZ = 1 - 0.980010;// axis Z has to be 1.0
+        float initAccelY = 0 - initAccelYCorrection;// axis Y has to be zeroed
+        float initAccelZ = 1 - initAccelZCorrection;// axis Z has to be 1.0
 
         ESP_LOGI(IMU_TAG, "Initial gyro data: x: %f y: %f z: %f", gyro_data.adj_data.x, gyro_data.adj_data.y, gyro_data.adj_data.z);
         ESP_LOGI(IMU_TAG, "Initial accel data: x: %f y: %f z: %f", accel_data.adj_data.x, accel_data.adj_data.y, accel_data.adj_data.z);
@@ -170,7 +177,6 @@ void app_main(void)
         lastTime = gyro_data.adj_data.sensortime;
         alpha = atan2f(accel_data.adj_data.z + initAccelZ, accel_data.adj_data.y + initAccelY) * 180.0f / M_PI;        
 
-        float expected_vertical = 90.5; //alpha;
         ESP_LOGI(IMU_TAG, "Initial alpha: %6f", alpha);
 
         for (;;)
@@ -202,14 +208,14 @@ void app_main(void)
                 correctionDir.vertical = alphaError > 0 ? Y_Direction::FORWARD : Y_Direction::BACKWARD;
             }
 
-            ESP_LOGI(CONTROL_TAG, "Turn: %6f - Delta Alpha: %6f", turn, deltaAlpha);
-            if (turn > 0.0f){
-                correctionDir.horizontal = X_Direction::RIGHT;
-            } else if (turn < 0.0f){
-                correctionDir.horizontal = X_Direction::LEFT;
-            } else {
-                correctionDir.horizontal = X_Direction::X_CENTER;
-            }
+            // ESP_LOGI(CONTROL_TAG, "Turn: %6f - Delta Alpha: %6f", turn, deltaAlpha);
+            // if (turn > 0.0f){
+            //     correctionDir.horizontal = X_Direction::RIGHT;
+            // } else if (turn < 0.0f){
+            //     correctionDir.horizontal = X_Direction::LEFT;
+            // } else {
+            //     correctionDir.horizontal = X_Direction::X_CENTER;
+            // }
 
             motorSpeed = -motorSpeed + turn * turnRange;
 
@@ -222,7 +228,7 @@ void app_main(void)
                 speedForMotor = static_cast<int32_t>(motorSpeed);
 
             if (fabs(speedForMotor) < BASE_SPEED){
-                // ESP_LOGI(MOTOR_TAG, "Speed too low: %6ld", speedForMotor);
+                ESP_LOGI(MOTOR_TAG, "Speed too low: %6ld at angle %6f", speedForMotor, alpha);
                 robot.Stop(); // Stop the robot if speed is too low
                 vTaskDelay(pdMS_TO_TICKS(20));
                 continue; // Skip if speed is too low
