@@ -41,7 +41,7 @@ constexpr gpio_num_t STBY = GPIO_NUM_33;
 constexpr ledc_mode_t LEDC_SPEED_MODE = LEDC_LOW_SPEED_MODE;
 
 RobotDefinition robot;  
-static const int LEFT_MOTOR_CORRECTION = 20; // Correction for left motor
+static const int LEFT_MOTOR_CORRECTION = 25; // Correction for left motor
 static const int RIGHT_MOTOR_CORRECTION = 0; // Correction for right motor
 static const int BASE_SPEED = 350; // Default speed for motors
 static const float deltaAlphaRange = 5.0f;
@@ -51,7 +51,10 @@ float turn = 0.0f;
 
 float initAccelYCorrection = 0.020020f; // Correction for initial acceleration on Y axis
 float initAccelZCorrection = 0.982452f; // Correction for initial acceleration on Z axis
-float expected_vertical = 89.8;//90.7; //alpha;
+float expected_vertical_warmode = 88.7f; //alpha in war mode
+float expected_vertical_standingmode = 90.5f; //alpha in standing mode
+float expected_vertical = 88.5;//89.8;//90.7; //alpha;
+
 
 // bmi
 Bmi160<Bmi160SpiConfig> imu;
@@ -73,7 +76,7 @@ constexpr float PID_KD = 0.125f; // Derivative gain
 PidService pid(PID_KP, PID_KI, PID_KD);
 
 // Status
-ModeTypeTranslation current_mode = ModeTypeTranslation::MODE_STANDING;
+ModeTypeTranslation current_mode = ModeTypeTranslation::MODE_WAR;
 
 extern "C" void app_main();
 
@@ -100,10 +103,12 @@ void applyMode()
     {
         case ModeTypeTranslation::MODE_STANDING:
             // Apply standing mode settings
+            expected_vertical = expected_vertical_standingmode;
             servo.setPos(90);
             break;
         case ModeTypeTranslation::MODE_WAR:
             // Apply war mode settings
+            expected_vertical = expected_vertical_warmode;
             servo.setPos(0);
             break;
         default:
@@ -219,6 +224,10 @@ void app_main(void)
 
         for (;;)
         {
+            
+            // Apply message control data
+            applyMode();
+
             // get bmi data
             imu.getData(accel_data, gyro_data);
 
@@ -245,9 +254,6 @@ void app_main(void)
             if (alphaError != 0){
                 correctionDir.vertical = alphaError > 0 ? Y_Direction::FORWARD : Y_Direction::BACKWARD;
             }
-
-            // Apply message control data
-            applyMode();
 
             // ESP_LOGI(CONTROL_TAG, "Turn: %6f - Delta Alpha: %6f", turn, deltaAlpha);
             if (turn > 0.0f){
