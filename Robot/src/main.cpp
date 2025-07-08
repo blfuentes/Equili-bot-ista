@@ -44,8 +44,8 @@ RobotDefinition robot;
 static const int LEFT_MOTOR_CORRECTION = 25; // Correction for left motor
 static const int RIGHT_MOTOR_CORRECTION = 0; // Correction for right motor
 static const int BASE_SPEED = 350; // Default speed for motors
-static const float deltaAlphaRange = 5.0f;
-static const float turnRange = 400.0f;
+static const float deltaAlphaRange = 6.0f;
+static const float turnRange = 700.0f;
 float deltaAlpha = 0.0f;
 float turn = 0.0f;
 
@@ -53,7 +53,7 @@ float initAccelYCorrection = 0.020020f; // Correction for initial acceleration o
 float initAccelZCorrection = 0.982452f; // Correction for initial acceleration on Z axis
 float expected_vertical_warmode = 88.7f; //alpha in war mode
 float expected_vertical_standingmode = 90.5f; //alpha in standing mode
-float expected_vertical = 88.5;//89.8;//90.7; //alpha;
+float expected_vertical = 88.5;
 
 
 // bmi
@@ -76,25 +76,36 @@ constexpr float PID_KD = 0.125f; // Derivative gain
 PidService pid(PID_KP, PID_KI, PID_KD);
 
 // Status
+message_control_status last_msg = {0, 0, 0, 0, 0, 0};
 ModeTypeTranslation current_mode = ModeTypeTranslation::MODE_WAR;
 
 extern "C" void app_main();
 
+bool messageChanged(const message_control_status &msg)
+{
+    return (last_msg.move_x != msg.move_x || last_msg.move_y != msg.move_y ||
+            last_msg.param_p != msg.param_p || last_msg.param_i != msg.param_i ||
+            last_msg.param_d != msg.param_d || last_msg.mode != msg.mode);
+}
+
 void doWhenMove(message_control_status msg)
 {
-    deltaAlpha = (msg.move_y * 2)/4095.0f;
-    turn = (msg.move_x * 2)/4095.0f;
+    deltaAlpha = -(msg.move_y * 2)/4095.0f;
+    turn = -(msg.move_x * 2)/4095.0f;
 
     current_mode = static_cast<ModeTypeTranslation>(msg.mode);
 }
 
 static void recvcb(const esp_now_recv_info_t * esp_now_info, const uint8_t *data, int data_len)
 {
-    // ESP_LOGI(MESSAGE_TAG, "Message received");
     message_control_status msg = *(message_control_status*)&data[0];
-    doWhenMove(msg);
-    // ESP_LOGI(MESSAGE_TAG, "Message received. Mode: %d, Move X: %d, Move Y: %d, Param P: %3.0f, Param I: %3.0f, Param D: %.3f", 
-    //     msg.mode, msg.move_x, msg.move_y, msg.param_p, msg.param_i, msg.param_d);
+    if (messageChanged(msg))
+    {
+        ESP_LOGI(MESSAGE_TAG, "Message changed. Mode: %d, Move X: %d, Move Y: %d, Param P: %3.0f, Param I: %3.0f, Param D: %.3f", 
+            msg.mode, msg.move_x, msg.move_y, msg.param_p, msg.param_i, msg.param_d);
+        last_msg = msg; // Update last message
+        doWhenMove(msg);
+    }
 }
 
 void applyMode()
@@ -256,15 +267,15 @@ void app_main(void)
             }
 
             // ESP_LOGI(CONTROL_TAG, "Turn: %6f - Delta Alpha: %6f", turn, deltaAlpha);
-            if (turn > 0.0f){
+            if (turn < 0.0f){
                 correctionDir.horizontal = X_Direction::RIGHT;
-            } else if (turn < 0.0f){
+            } else if (turn > 0.0f){
                 correctionDir.horizontal = X_Direction::LEFT;
             } else {
                 correctionDir.horizontal = X_Direction::X_CENTER;
             }
 
-            motorSpeed = -motorSpeed + turn * turnRange;
+            motorSpeed = -(motorSpeed + (fabs(turn * turnRange)));
 
             int32_t speedForMotor = 0;
             if (motorSpeed > 1023)
@@ -274,12 +285,15 @@ void app_main(void)
             else
                 speedForMotor = static_cast<int32_t>(motorSpeed);
 
-            if (fabs(speedForMotor) < BASE_SPEED){
-                // ESP_LOGI(MOTOR_TAG, "Speed too low: %6ld at angle %6f", speedForMotor, alpha);
+            if (fabs(speedForMotor) < BASE_SPEED && correctionDir.horizontal == X_Direction::X_CENTER){
+                ESP_LOGI(MOTOR_TAG, "Speed too low: %6ld at angle %6f", speedForMotor, alpha);
                 robot.Stop(); // Stop the robot if speed is too low
                 vTaskDelay(pdMS_TO_TICKS(20));
                 continue; // Skip if speed is too low
             }
+
+            ESP_LOGI(CONTROL_TAG, "Turn: %6f - Delta Alpha: %6f - Correction Dir: %s/%s", 
+                turn, deltaAlpha, robot.X_DirectionToString(correctionDir.horizontal), robot.Y_DirectionToString(correctionDir.vertical));
 
             ESP_LOGI(ACTION_TAG, "Expected vertical: %6f - Alpha: %6f - Error: %6f - Direction: %s - Speed: %6ld", expected_vertical, alpha, alphaError, robot.Y_DirectionToString(correctionDir.vertical), speedForMotor);
             robot.Drive(correctionDir, speedForMotor);
