@@ -44,24 +44,30 @@ RobotDefinition robot;
 static const int LEFT_MOTOR_CORRECTION = 25; // Correction for left motor
 static const int RIGHT_MOTOR_CORRECTION = 0; // Correction for right motor
 static const int BASE_SPEED = 350; // Default speed for motors
-static const float deltaAlphaRange = 6.0f;
-static const float turnRange = 700.0f;
+static const int MAX_CONTROL_RANGE = 1800; // Maximum control range for control inputs
+static const int MIN_MOVE_X = -2100; // Minimum value for move_x
+static const int MAX_MOVE_X = 1919; // Maximum value for move_x
+static const int MIN_MOVE_Y = -2200; // Minimum value for move_y
+static const int MAX_MOVE_Y = 1873; // Maximum value for move_y
+static const float DELTA_ALPHA_RANGE = 4.5f;
+static const float TURN_RANGE = 800.0f;
+
 float deltaAlpha = 0.0f;
 float turn = 0.0f;
 
 float initAccelYCorrection = 0.020020f; // Correction for initial acceleration on Y axis
 float initAccelZCorrection = 0.982452f; // Correction for initial acceleration on Z axis
-float expected_vertical_warmode = 88.7f; //alpha in war mode
-float expected_vertical_standingmode = 90.5f; //alpha in standing mode
+float expectedVerticalWarmode = 88.7f; //alpha in war mode
+float expectedVerticalStandingmode = 90.5f; //alpha in standing mode
 float expected_vertical = 88.5;
 
 
 // bmi
 Bmi160<Bmi160SpiConfig> imu;
-gpio_num_t mosi_pin = GPIO_NUM_16;
-gpio_num_t miso_pin = GPIO_NUM_21;
-gpio_num_t sclk_pin = GPIO_NUM_4;
-gpio_num_t cs_pin   = GPIO_NUM_17;
+gpio_num_t MOSI_PIN = GPIO_NUM_16;
+gpio_num_t MISO_PIN = GPIO_NUM_21;
+gpio_num_t SCLK_PIN = GPIO_NUM_4;
+gpio_num_t CS_PIN   = GPIO_NUM_17;
 
 // Servo
 Servo servo;
@@ -76,22 +82,32 @@ constexpr float PID_KD = 0.125f; // Derivative gain
 PidService pid(PID_KP, PID_KI, PID_KD);
 
 // Status
-message_control_status last_msg = {0, 0, 0, 0, 0, 0};
+message_control_status lastMsg = {0, 0, 0, PID_KP, PID_KI, PID_KD};
 ModeTypeTranslation current_mode = ModeTypeTranslation::MODE_WAR;
 
 extern "C" void app_main();
 
+double normalize(double x, double old_min, double old_max, double new_min, double new_max) {
+    return new_min + (x - old_min) * (new_max - new_min) / (old_max - old_min);
+}
+
 bool messageChanged(const message_control_status &msg)
 {
-    return (last_msg.move_x != msg.move_x || last_msg.move_y != msg.move_y ||
-            last_msg.param_p != msg.param_p || last_msg.param_i != msg.param_i ||
-            last_msg.param_d != msg.param_d || last_msg.mode != msg.mode);
+    return (lastMsg.move_x != msg.move_x || lastMsg.move_y != msg.move_y ||
+            lastMsg.param_p != msg.param_p || lastMsg.param_i != msg.param_i ||
+            lastMsg.param_d != msg.param_d || lastMsg.mode != msg.mode);
 }
 
 void doWhenMove(message_control_status msg)
 {
-    deltaAlpha = -(msg.move_y * 2)/4095.0f;
-    turn = -(msg.move_x * 2)/4095.0f;
+    // escale move_y and move_x to range [-MAX_CONTROL_RANGE, MAX_CONTROL_RANGE]
+    int move_x = static_cast<int>(std::round(normalize(msg.move_x, MIN_MOVE_X, MAX_MOVE_X, -MAX_CONTROL_RANGE, MAX_CONTROL_RANGE)));
+    int move_y = static_cast<int>(std::round(normalize(msg.move_y, MIN_MOVE_Y, MAX_MOVE_Y, -MAX_CONTROL_RANGE, MAX_CONTROL_RANGE)));
+
+    ESP_LOGI(MESSAGE_TAG, "Move X: %d -> %d, Move Y: %d -> %d", msg.move_x, move_x, msg.move_y, move_y);
+
+    deltaAlpha = -(move_y)/MAX_CONTROL_RANGE;
+    turn = -(move_x)/MAX_CONTROL_RANGE;
 
     current_mode = static_cast<ModeTypeTranslation>(msg.mode);
 }
@@ -103,7 +119,7 @@ static void recvcb(const esp_now_recv_info_t * esp_now_info, const uint8_t *data
     {
         ESP_LOGI(MESSAGE_TAG, "Message changed. Mode: %d, Move X: %d, Move Y: %d, Param P: %3.0f, Param I: %3.0f, Param D: %.3f", 
             msg.mode, msg.move_x, msg.move_y, msg.param_p, msg.param_i, msg.param_d);
-        last_msg = msg; // Update last message
+        lastMsg = msg; // Update last message
         doWhenMove(msg);
     }
 }
@@ -114,12 +130,12 @@ void applyMode()
     {
         case ModeTypeTranslation::MODE_STANDING:
             // Apply standing mode settings
-            expected_vertical = expected_vertical_standingmode;
+            expected_vertical = expectedVerticalStandingmode;
             servo.setPos(90);
             break;
         case ModeTypeTranslation::MODE_WAR:
             // Apply war mode settings
-            expected_vertical = expected_vertical_warmode;
+            expected_vertical = expectedVerticalWarmode;
             servo.setPos(0);
             break;
         default:
@@ -170,10 +186,10 @@ void app_main(void)
     ESP_LOGI(IMU_TAG, "Configuring BMI160 IMU...");
     Bmi160SpiConfig config = {
         .spidev = SPI3_HOST,
-        .mosi = mosi_pin,
-        .miso = miso_pin,
-        .sclk = sclk_pin,
-        .cs   = cs_pin,
+        .mosi = MOSI_PIN,
+        .miso = MISO_PIN,
+        .sclk = SCLK_PIN,
+        .cs   = CS_PIN,
         .speed= 4*1000*1000
     };
 
@@ -183,28 +199,31 @@ void app_main(void)
     }
     else
     {
-        Bmi160Data accel_data, gyro_data;
+        Bmi160Data accelData, gyroData;
+        
+        deltaAlpha = 0.0f;
+        turn = 0.0f;
 
         // start calibration
         ESP_LOGI(IMU_TAG, "Starting calibration...");
-        float gyro_offset_x = 0.0f, gyro_offset_y = 0.0f, gyro_offset_z = 0.0f;
+        float gyroOffsetX = 0.0f, gyroOffsetY = 0.0f, gyroOffsetZ = 0.0f;
 
         // collect data
         const int num_samples = 50;
         for (int i = 0; i < num_samples; i++)
         {
-            imu.getData(accel_data, gyro_data);
-            gyro_offset_x += gyro_data.adj_data.x;
-            gyro_offset_y += gyro_data.adj_data.y;
-            gyro_offset_z += gyro_data.adj_data.z;
+            imu.getData(accelData, gyroData);
+            gyroOffsetX += gyroData.adj_data.x;
+            gyroOffsetY += gyroData.adj_data.y;
+            gyroOffsetZ += gyroData.adj_data.z;
             vTaskDelay(pdMS_TO_TICKS(10));
         }
 
         // normalize
-        gyro_offset_x /= num_samples;
-        gyro_offset_y /= num_samples;
-        gyro_offset_z /= num_samples;
-        ESP_LOGI(IMU_TAG, "Calibration complete. Offsets: x: %f y: %f z: %f", gyro_offset_x, gyro_offset_y, gyro_offset_z);
+        gyroOffsetX /= num_samples;
+        gyroOffsetY /= num_samples;
+        gyroOffsetZ /= num_samples;
+        ESP_LOGI(IMU_TAG, "Calibration complete. Offsets: x: %f y: %f z: %f", gyroOffsetX, gyroOffsetY, gyroOffsetZ);
 
         float alpha = 0.0f; // [degree]
         float factor = 0.985f;
@@ -215,21 +234,21 @@ void app_main(void)
         float p,i,d;
 
         // flattern data
-        gyro_data.adj_data.x -= gyro_offset_x;
-        gyro_data.adj_data.y -= gyro_offset_y;
-        gyro_data.adj_data.z -= gyro_offset_z;
+        gyroData.adj_data.x -= gyroOffsetX;
+        gyroData.adj_data.y -= gyroOffsetY;
+        gyroData.adj_data.z -= gyroOffsetZ;
 
         // float initAccelX = accel_data.adj_data.x;
         float initAccelY = 0 - initAccelYCorrection;// axis Y has to be zeroed
         float initAccelZ = 1 - initAccelZCorrection;// axis Z has to be 1.0
 
-        ESP_LOGI(IMU_TAG, "Initial gyro data: x: %f y: %f z: %f", gyro_data.adj_data.x, gyro_data.adj_data.y, gyro_data.adj_data.z);
-        ESP_LOGI(IMU_TAG, "Initial accel data: x: %f y: %f z: %f", accel_data.adj_data.x, accel_data.adj_data.y, accel_data.adj_data.z);
+        ESP_LOGI(IMU_TAG, "Initial gyro data: x: %f y: %f z: %f", gyroData.adj_data.x, gyroData.adj_data.y, gyroData.adj_data.z);
+        ESP_LOGI(IMU_TAG, "Initial accel data: x: %f y: %f z: %f", accelData.adj_data.x, accelData.adj_data.y, accelData.adj_data.z);
         
         // first lecture
-        imu.getData(accel_data, gyro_data);
-        lastTime = gyro_data.adj_data.sensortime;
-        alpha = atan2f(accel_data.adj_data.z + initAccelZ, accel_data.adj_data.y + initAccelY) * 180.0f / M_PI;        
+        imu.getData(accelData, gyroData);
+        lastTime = gyroData.adj_data.sensortime;
+        alpha = atan2f(accelData.adj_data.z + initAccelZ, accelData.adj_data.y + initAccelY) * 180.0f / M_PI;        
 
         ESP_LOGI(IMU_TAG, "Initial alpha: %6f", alpha);
 
@@ -240,21 +259,21 @@ void app_main(void)
             applyMode();
 
             // get bmi data
-            imu.getData(accel_data, gyro_data);
+            imu.getData(accelData, gyroData);
 
             // flattern data
-            gyro_data.adj_data.x -= gyro_offset_x;
-            gyro_data.adj_data.y -= gyro_offset_y;
-            gyro_data.adj_data.z -= gyro_offset_z;
+            gyroData.adj_data.x -= gyroOffsetX;
+            gyroData.adj_data.y -= gyroOffsetY;
+            gyroData.adj_data.z -= gyroOffsetZ;
 
-            dt = (gyro_data.adj_data.sensortime - lastTime) / 1000.0f;
-            lastTime = gyro_data.adj_data.sensortime;
+            dt = (gyroData.adj_data.sensortime - lastTime) / 1000.0f;
+            lastTime = gyroData.adj_data.sensortime;
 
-            float firstPart = alpha - gyro_data.adj_data.x * dt;
-            float secondPart = atan2f(accel_data.adj_data.z + initAccelZ, accel_data.adj_data.y + initAccelY) * 180.0f / M_PI;
+            float firstPart = alpha - gyroData.adj_data.x * dt;
+            float secondPart = atan2f(accelData.adj_data.z + initAccelZ, accelData.adj_data.y + initAccelY) * 180.0f / M_PI;
             alpha = firstPart * factor + secondPart * (1 - factor);
 
-            float alphaError = expected_vertical - alpha - deltaAlpha * deltaAlphaRange;
+            float alphaError = expected_vertical - alpha - deltaAlpha * DELTA_ALPHA_RANGE;
             motorSpeed = pid.update(alphaError, dt);
             pid.getLastPid(p, i, d);
 
@@ -266,7 +285,6 @@ void app_main(void)
                 correctionDir.vertical = alphaError > 0 ? Y_Direction::FORWARD : Y_Direction::BACKWARD;
             }
 
-            // ESP_LOGI(CONTROL_TAG, "Turn: %6f - Delta Alpha: %6f", turn, deltaAlpha);
             if (turn < 0.0f){
                 correctionDir.horizontal = X_Direction::RIGHT;
             } else if (turn > 0.0f){
@@ -275,7 +293,7 @@ void app_main(void)
                 correctionDir.horizontal = X_Direction::X_CENTER;
             }
 
-            motorSpeed = -(motorSpeed + (fabs(turn * turnRange)));
+            motorSpeed = -(motorSpeed + (fabs(turn * TURN_RANGE)));
 
             int32_t speedForMotor = 0;
             if (motorSpeed > 1023)
