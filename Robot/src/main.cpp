@@ -44,23 +44,25 @@ RobotDefinition robot;
 static const int LEFT_MOTOR_CORRECTION = 25; // Correction for left motor
 static const int RIGHT_MOTOR_CORRECTION = 0; // Correction for right motor
 static const int BASE_SPEED = 350; // Default speed for motors
-static const int MAX_CONTROL_RANGE = 1800; // Maximum control range for control inputs
-static const int MIN_MOVE_X = -2100; // Minimum value for move_x
-static const int MAX_MOVE_X = 1919; // Maximum value for move_x
-static const int MIN_MOVE_Y = -2200; // Minimum value for move_y
-static const int MAX_MOVE_Y = 1873; // Maximum value for move_y
-static const float DELTA_ALPHA_RANGE = 4.5f;
-static const float TURN_RANGE = 800.0f;
+static const float MAX_CONTROL_RANGE = 1800.0f; // Maximum control range for control inputs
+static const int MIN_MOVE_X = -2130; // Minimum value for move_x
+static const int MAX_MOVE_X = 1956; // Maximum value for move_x
+static const int MIN_MOVE_Y = -2180; // Minimum value for move_y
+static const int MAX_MOVE_Y = 1911; // Maximum value for move_y
+static const float DELTA_FORWARD_ALPHA_RANGE = 3.45f;
+static const float DELTA_BACKWARD_ALPHA_RANGE = 2.50f;
+static const float TURN_RANGE = 620.0f;
+static const float CONTROL_THRESHOLD = .1f; // Threshold for control input to be considered significant
 
 float deltaAlpha = 0.0f;
 float turn = 0.0f;
 
+//
 float initAccelYCorrection = 0.020020f; // Correction for initial acceleration on Y axis
 float initAccelZCorrection = 0.982452f; // Correction for initial acceleration on Z axis
-float expectedVerticalWarmode = 88.7f; //alpha in war mode
-float expectedVerticalStandingmode = 90.5f; //alpha in standing mode
+float expectedVerticalWarmode = 91.7f; //alpha in war mode
+float expectedVerticalStandingmode = 93.0f; //alpha in standing mode
 float expected_vertical = 88.5;
-
 
 // bmi
 Bmi160<Bmi160SpiConfig> imu;
@@ -100,14 +102,33 @@ bool messageChanged(const message_control_status &msg)
 
 void doWhenMove(message_control_status msg)
 {
-    // escale move_y and move_x to range [-MAX_CONTROL_RANGE, MAX_CONTROL_RANGE]
-    int move_x = static_cast<int>(std::round(normalize(msg.move_x, MIN_MOVE_X, MAX_MOVE_X, -MAX_CONTROL_RANGE, MAX_CONTROL_RANGE)));
-    int move_y = static_cast<int>(std::round(normalize(msg.move_y, MIN_MOVE_Y, MAX_MOVE_Y, -MAX_CONTROL_RANGE, MAX_CONTROL_RANGE)));
+    // if move_x is different than 0, check if positive or negative and scale it to either [-MAX_CONTROL_RANGE, 0] or [0, MAX_CONTROL_RANGE]
+    int move_x = 0;
+    if (msg.move_x != 0) {
+        move_x = (msg.move_x > 0) ? normalize(msg.move_x, 0, MAX_CONTROL_RANGE, 0, MAX_CONTROL_RANGE) : normalize(msg.move_x, -MAX_CONTROL_RANGE, 0, -MAX_CONTROL_RANGE, 0);
+        turn = -(move_x)/MAX_CONTROL_RANGE;
+    }
+    else 
+    {
+        turn = 0.0f; // Reset turn if move_x is 0
+    }
+    // if move_y is different than 0, check if positive or negative and scale it to either [-MAX_CONTROL_RANGE, 0] or [0, MAX_CONTROL_RANGE]
+    int move_y = 0;
+    if (msg.move_y != 0) {
+        move_y = (msg.move_y > 0) ? normalize(msg.move_y, 0, MAX_CONTROL_RANGE, 0, MAX_CONTROL_RANGE) : normalize(msg.move_y, -MAX_CONTROL_RANGE, 0, -MAX_CONTROL_RANGE, 0);
+        deltaAlpha = -(move_y)/MAX_CONTROL_RANGE;
+    }
+    else
+    {
+        deltaAlpha = 0.0f; // Reset deltaAlpha if move_y is 0
+    }
 
-    ESP_LOGI(MESSAGE_TAG, "Move X: %d -> %d, Move Y: %d -> %d", msg.move_x, move_x, msg.move_y, move_y);
+    // update pid
+    pid.setKp(msg.param_p);
+    pid.setKi(msg.param_i);
+    pid.setKd(msg.param_d);
 
-    deltaAlpha = -(move_y)/MAX_CONTROL_RANGE;
-    turn = -(move_x)/MAX_CONTROL_RANGE;
+    ESP_LOGI(MESSAGE_TAG, "Move X: %d -> %d, Move Y: %d -> %d || Delta Alpha: %6lf - Turn: %6lf", msg.move_x, move_x, msg.move_y, move_y, deltaAlpha, turn);
 
     current_mode = static_cast<ModeTypeTranslation>(msg.mode);
 }
@@ -273,7 +294,7 @@ void app_main(void)
             float secondPart = atan2f(accelData.adj_data.z + initAccelZ, accelData.adj_data.y + initAccelY) * 180.0f / M_PI;
             alpha = firstPart * factor + secondPart * (1 - factor);
 
-            float alphaError = expected_vertical - alpha - deltaAlpha * DELTA_ALPHA_RANGE;
+            float alphaError = expected_vertical - alpha - deltaAlpha * (deltaAlpha < 0.0f ? DELTA_FORWARD_ALPHA_RANGE : DELTA_BACKWARD_ALPHA_RANGE);
             motorSpeed = pid.update(alphaError, dt);
             pid.getLastPid(p, i, d);
 
