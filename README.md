@@ -13,7 +13,15 @@ The 'Equili-bot-ista' / 'Roborracho' / 'Robotis Yeltsin' is a self-balancing rob
 
 ## Demo
 ### Robot
+
+
+https://github.com/user-attachments/assets/f29adb14-0a24-4408-b29b-bd193cecef2e
+
+
 ### Control
+
+https://github.com/user-attachments/assets/a7362dce-cef8-4407-b584-1fbcb6137070
+
 
 ## Media
 ![front-robot.jpeg](./Media/front-robot.jpeg)
